@@ -27,7 +27,6 @@ import System.Process
 import System.Info
 import System.IO.Extra
 
-import Paths_ghcid
 import Language.Haskell.Ghcid.Escape
 import Language.Haskell.Ghcid.Terminal
 import Language.Haskell.Ghcid.Util
@@ -75,6 +74,9 @@ data ColorMode
     | Always -- ^ Terminal output will always be coloured.
     | Auto   -- ^ Terminal output will be coloured if $TERM and stdout appear to support it.
       deriving (Show, Typeable, Data)
+
+version :: Version
+version = makeVersion [0,0]
 
 options :: Mode (CmdArgs Options)
 options = cmdArgsMode $ Options

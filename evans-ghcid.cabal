@@ -1,0 +1,101 @@
+cabal-version: 3.0
+
+name:       evans-ghcid
+version:    0.8.7
+category:   Development
+author:     Neil Mitchell <ndmitchell@gmail.com>, jpmoresmau
+maintainer: Neil Mitchell <ndmitchell@gmail.com>
+homepage:   https://github.com/evanrelf/ghcid
+license:    BSD-3-Clause
+copyright:  Neil Mitchell 2014-2020
+
+
+common common
+  build-depends:
+    , base   ^>= 4.13.0
+    -- , relude ^>= 0.7.0
+  -- mixins:
+  --   , base hiding (Prelude)
+  --   , relude (Relude as Prelude)
+  default-language: Haskell2010
+  default-extensions:
+    , BlockArguments
+    , DeriveAnyClass
+    , DeriveFunctor
+    , DeriveGeneric
+    , DerivingStrategies
+    , DerivingVia
+    , GeneralizedNewtypeDeriving
+    , LambdaCase
+    -- , OverloadedStrings
+  ghc-options:
+    -Wall
+    -Wcompat
+    -- -Werror=incomplete-record-updates
+    -- -Werror=incomplete-uni-patterns
+    -Werror=missing-fields
+    -- -Werror=partial-fields
+    -Widentities
+    -Wmissing-home-modules
+    -Wredundant-constraints
+    -foptimal-applicative-do
+    -fshow-warning-groups
+
+
+common executable
+  ghc-options:
+    -threaded
+    -rtsopts
+    -with-rtsopts=-N
+
+
+library
+  import: common
+  hs-source-dirs: lib
+  build-depends:
+    , ansi-terminal
+    , cmdargs       >= 0.10
+    , directory     >= 1.2
+    , extra         >= 1.6.20
+    , filepath
+    , process       >= 1.1
+    , time          >= 1.5
+  exposed-modules:
+    , Language.Haskell.Ghcid
+  other-modules:
+    , Language.Haskell.Ghcid.Escape
+    , Language.Haskell.Ghcid.Parser
+    , Language.Haskell.Ghcid.Types
+    , Language.Haskell.Ghcid.Util
+
+
+executable evans-ghcid
+    import: common, executable
+    hs-source-dirs: lib
+    main-is: Ghcid.hs
+    ghc-options:
+      -main-is Ghcid.main
+    build-depends:
+      , ansi-terminal
+      , cmdargs       >= 0.10
+      , containers
+      , directory     >= 1.2
+      , extra         >= 1.6.20
+      , filepath
+      , fsnotify
+      , process       >= 1.1
+      , terminal-size >= 0.3
+      , time          >= 1.5
+    if os(windows)
+        build-depends: Win32
+    else
+        build-depends: unix
+    other-modules:
+      , Language.Haskell.Ghcid
+      , Language.Haskell.Ghcid.Escape
+      , Language.Haskell.Ghcid.Parser
+      , Language.Haskell.Ghcid.Terminal
+      , Language.Haskell.Ghcid.Types
+      , Language.Haskell.Ghcid.Util
+      , Session
+      , Wait
