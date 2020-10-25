@@ -55,7 +55,7 @@ listContentsInside test dir = do
 --   starting from when 'waitFiles' was initially called.
 --
 --   pures a message about why you are continuing (usually a file name).
-waitFiles :: forall a.  Ord a => Waiter -> IO ([(FilePath, a)] -> IO (Either String [(FilePath, a)]))
+waitFiles :: Waiter -> IO ([(FilePath, a)] -> IO (Either String [(FilePath, a)]))
 waitFiles waiter = do
     base <- getCurrentTime
     pure $ \files -> handle onError (go base files)
@@ -71,11 +71,11 @@ waitFiles waiter = do
         files <- concatForM files $ \(file, a) ->
             ifM (doesDirectoryExist file) (fmap (,a) <$> listContentsInside (pure . not . isPrefixOf "." . takeFileName) file) (pure [(file, a)])
         case waiter of
-            WaiterPoll t -> pure ()
+            WaiterPoll _t -> pure ()
             WaiterNotify manager kick mp -> do
                 dirs <- fmap Set.fromList $ mapM canonicalizePathSafe $ nubOrd $ map (takeDirectory . fst) files
                 modifyVar_ mp $ \mp -> do
-                    let (keep,del) = Map.partitionWithKey (\k v -> k `Set.member` dirs) mp
+                    let (keep,del) = Map.partitionWithKey (\k _v -> k `Set.member` dirs) mp
                     sequence_ $ Map.elems del
                     new <- forM (Set.toList $ dirs `Set.difference` Map.keysSet keep) $ \dir -> do
                         can <- watchDir manager (fromString dir) (const True) $ \event -> do

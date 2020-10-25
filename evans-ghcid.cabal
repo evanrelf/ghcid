@@ -27,19 +27,21 @@ common common
     , DerivingVia
     , GeneralizedNewtypeDeriving
     , LambdaCase
-    -- , OverloadedStrings
+    , OverloadedStrings
   ghc-options:
     -Wall
     -Wcompat
-    -- -Werror=incomplete-record-updates
-    -- -Werror=incomplete-uni-patterns
+    -Werror=incomplete-record-updates
+    -Werror=incomplete-uni-patterns
     -Werror=missing-fields
-    -- -Werror=partial-fields
+    -Werror=partial-fields
     -Widentities
     -Wmissing-home-modules
     -Wredundant-constraints
     -foptimal-applicative-do
     -fshow-warning-groups
+    -- TODO: Re-enable this warning
+    -Wno-name-shadowing
 
 
 common executable

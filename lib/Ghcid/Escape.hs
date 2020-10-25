@@ -21,6 +21,7 @@ import Prelude
 newtype Esc = Esc {fromEsc :: String}
     deriving (Eq,Show)
 
+app :: Esc -> Esc -> Esc
 app (Esc x) (Esc y) = Esc $ x ++ y
 
 unesc :: Esc -> Maybe (Either Esc Char, Esc)
@@ -54,12 +55,13 @@ stripInfixE needle e = case unesc e of
     Nothing -> Nothing
     Just (x,xs) -> first (app $ fromEither $ fmap (Esc . pure) x) <$> stripInfixE needle xs
 
-
-spanE, breakE :: (Char -> Bool) -> Esc -> (Esc, Esc)
+breakE :: (Char -> Bool) -> Esc -> (Esc, Esc)
 breakE f = spanE (not . f)
+
+spanE :: (Char -> Bool) -> Esc -> (Esc, Esc)
 spanE f e = case unesc e of
     Nothing -> (Esc "", Esc "")
-    Just (Left e, rest) -> first (app e) $ spanE f rest
+    Just (Left e', rest) -> first (app e') $ spanE f rest
     Just (Right c, rest) | f c -> first (app $ Esc [c]) $ spanE f rest
                          | otherwise -> (Esc "", e)
 
@@ -78,7 +80,7 @@ unwordsE = Esc . unwords . map fromEsc
 
 
 repeatedlyE :: (Esc -> (b, Esc)) -> Esc -> [b]
-repeatedlyE f (Esc []) = []
+repeatedlyE _ (Esc []) = []
 repeatedlyE f as = b : repeatedlyE f as'
     where (b, as') = f as
 

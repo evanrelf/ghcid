@@ -1,5 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 
+{-# OPTIONS_GHC -Wno-incomplete-record-updates #-}
+
 -- | A persistent version of the Ghci session, encoding lots of semantics on top.
 --   Not suitable for calling multithreaded.
 module Session(
@@ -24,7 +26,7 @@ import Data.Maybe
 import Data.List.Extra
 import Control.Applicative
 import Prelude
-import System.IO.Extra
+import System.IO.Extra hiding (stdout, stderr)
 
 
 data Session = Session
@@ -40,8 +42,8 @@ data Session = Session
 enableEval :: Session -> Session
 enableEval s = s { allowEval = True }
 
-
-debugShutdown x = when False $ print ("DEBUG SHUTDOWN", x)
+debugShutdown :: String -> IO ()
+debugShutdown x = when False $ print ("DEBUG SHUTDOWN" :: String, x)
 
 -- | The function 'withSession' expects to be run on the main thread,
 --   but the inner function will not. This ensures Ctrl-C is handled
@@ -69,7 +71,7 @@ withSession f = do
 -- | Kill. Wait just long enough to ensure you've done the job, but not to see the results.
 kill :: Ghci -> IO ()
 kill ghci = ignored $ do
-    timeout 5 $ do
+    void $ timeout 5 $ do
         debugShutdown "Before quit"
         ignored $ quit ghci
         debugShutdown "After quit"
@@ -90,45 +92,45 @@ qualify dir xs = [x{loadFile = dir </> loadFile x} | x <- xs]
 -- | Spawn a new Ghci process at a given command line. Returns the load messages, plus
 --   the list of files that were observed (both those loaded and those that failed to load).
 sessionStart :: Session -> String -> [String] -> IO ([Load], [FilePath])
-sessionStart Session{..} cmd setup = do
+sessionStart Session{ ghci = ghciIORef, ..} cmd setup = do
     modifyVar_ running $ const $ pure False
     writeIORef command $ Just (cmd, setup)
 
     -- cleanup any old instances
-    whenJustM (readIORef ghci) $ \v -> do
-        writeIORef ghci Nothing
+    whenJustM (readIORef ghciIORef) $ \v -> do
+        writeIORef ghciIORef Nothing
         void $ forkIO $ kill v
 
     -- start the new
     outStrLn $ "Loading " ++ cmd ++ " ..."
-    (v, messages) <- mask $ \unmask -> do
+    (v, messages0) <- mask $ \unmask -> do
         (v, messages) <- unmask $ startGhci cmd Nothing $ const outStrLn
-        writeIORef ghci $ Just v
+        writeIORef ghciIORef $ Just v
         pure (v, messages)
 
     -- do whatever preparation was requested
-    exec v $ unlines setup
+    void $ exec v $ unlines setup
 
     -- deal with current directory
     (dir, _) <- showPaths v
     writeIORef curdir dir
-    messages <- pure $ qualify dir messages
+    messages1 <- pure $ qualify dir messages0
 
-    let loaded = loadedModules messages
+    let loaded = loadedModules messages1
     evals <- performEvals v allowEval loaded
 
     -- install a handler
-    forkIO $ do
+    void $ forkIO $ do
         code <- waitForProcess $ process v
-        whenJustM (readIORef ghci) $ \ghci ->
+        whenJustM (readIORef ghciIORef) $ \ghci ->
             when (ghci == v) $ do
                 sleep 0.3 -- give anyone reading from the stream a chance to throw first
                 throwTo withThread $ ErrorCall $ "Command \"" ++ cmd ++ "\" exited unexpectedly with " ++ show code
 
     -- handle what the process returned
-    messages <- pure $ mapMaybe tidyMessage messages
-    writeIORef warnings $ getWarnings messages
-    pure (messages ++ evals, loaded)
+    messages2 <- pure $ mapMaybe tidyMessage messages1
+    writeIORef warnings $ getWarnings messages2
+    pure (messages2 ++ evals, loaded)
 
 
 getWarnings :: [Load] -> [Load]
@@ -195,29 +197,29 @@ wrapGhciMultiline xs = [":{"] ++ xs ++ [":}"]
 --   information that GHCi doesn't repeat (warnings from loaded modules) will be
 --   added back in.
 sessionReload :: Session -> IO ([Load], [FilePath], [FilePath])
-sessionReload session@Session{..} = do
+sessionReload session@Session{ ghci = ghciIORef, ..} = do
     -- kill anything async, set stuck if you didn't succeed
     old <- modifyVar running $ \b -> pure (False, b)
     stuck <- if not old then pure False else do
-        Just ghci <- readIORef ghci
+        Just ghci <- readIORef ghciIORef
         fmap isNothing $ timeout 5 $ interrupt ghci
 
     if stuck
       then (\(messages,loaded) -> (messages,loaded,loaded)) <$> sessionRestart session
       else do
         -- actually reload
-        Just ghci <- readIORef ghci
+        Just ghci <- readIORef ghciIORef
         dir <- readIORef curdir
-        messages <- mapMaybe tidyMessage . qualify dir <$> reload ghci
+        messages0 <- mapMaybe tidyMessage . qualify dir <$> reload ghci
         loaded <- map ((dir </>) . snd) <$> showModules ghci
-        let reloaded = loadedModules messages
+        let reloaded = loadedModules messages0
         warn <- readIORef warnings
         evals <- performEvals ghci allowEval reloaded
 
         -- only keep old warnings from files that are still loaded, but did not reload
         let validWarn w = loadFile w `elem` loaded && loadFile w `notElem` reloaded
         -- newest warnings always go first, so the file you hit save on most recently has warnings first
-        messages <- pure $ messages ++ filter validWarn warn
+        messages <- pure $ messages0 ++ filter validWarn warn
 
         writeIORef warnings $ getWarnings messages
         pure (messages ++ evals, nubOrd (loaded ++ reloaded), reloaded)
@@ -227,19 +229,19 @@ sessionReload session@Session{..} = do
 --   Will be automatically aborted if it takes too long. Only fires done if not aborted.
 --   Argument to done is the final stderr line.
 sessionExecAsync :: Session -> String -> (String -> IO ()) -> IO ()
-sessionExecAsync Session{..} cmd done = do
-    Just ghci <- readIORef ghci
-    stderr <- newIORef ""
+sessionExecAsync Session{ ghci = ghciIORef, .. } cmd done = do
+    Just ghci <- readIORef ghciIORef
+    stderrIORef <- newIORef ""
     modifyVar_ running $ const $ pure True
     caller <- myThreadId
     void $ flip forkFinally (either (throwTo caller) (const $ pure ())) $ do
         execStream ghci cmd $ \strm msg ->
             when (msg /= "*** Exception: ExitSuccess") $ do
-                when (strm == Stderr) $ writeIORef stderr msg
+                when (strm == Stderr) $ writeIORef stderrIORef msg
                 outStrLn msg
         old <- modifyVar running $ \b -> pure (False, b)
         -- don't fire Done if someone interrupted us
-        stderr <- readIORef stderr
+        stderr <- readIORef stderrIORef
         when old $ done stderr
 
 

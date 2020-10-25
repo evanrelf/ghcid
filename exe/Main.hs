@@ -1,4 +1,5 @@
 {-# LANGUAGE RecordWildCards, DeriveDataTypeable, TupleSections #-}
+{-# LANGUAGE NoOverloadedStrings #-}
 {-# OPTIONS_GHC -fno-cse #-}
 
 -- | The application entry point
@@ -80,35 +81,105 @@ version = makeVersion [0,0]
 
 options :: Mode (CmdArgs Options)
 options = cmdArgsMode $ Options
-    {command = "" &= name "c" &= typ "COMMAND" &= help "Command to run (defaults to ghci or cabal repl)"
-    ,arguments = [] &= args &= typ "MODULE"
-    ,test = [] &= name "T" &= typ "EXPR" &= help "Command to run after successful loading"
-    ,test_message = "Running test..." &= typ "MESSAGE" &= help "Message to show before running the test (defaults to \"Running test...\")"
-    ,run = [] &= name "r" &= typ "EXPR" &= opt "main" &= help "Command to run after successful loading (like --test but defaults to main)"
-    ,warnings = False &= name "W" &= help "Allow tests to run even with warnings"
-    ,lint = Nothing &= typ "COMMAND" &= name "lint" &= opt "hlint" &= help "Linter to run if there are no errors. Defaults to hlint."
-    ,no_status = False &= name "S" &= help "Suppress status messages"
-    ,clear = False &= name "clear" &= help "Clear screen when reloading"
-    ,reverse_errors = False &= help "Reverse output order (works best with --no-height-limit)"
-    ,no_height_limit = False &= name "no-height-limit" &= help "Disable height limit"
-    ,height = Nothing &= help "Number of lines to use (defaults to console height)"
-    ,width = Nothing &= name "w" &= help "Number of columns to use (defaults to console width)"
-    ,topmost = False &= name "t" &= help "Set window topmost (Windows only)"
-    ,no_title = False &= help "Don't update the shell title/icon"
-    ,project = "" &= typ "NAME" &= help "Name of the project, defaults to current directory"
-    ,restart = [] &= typ "PATH" &= help "Restart the command when the given file or directory contents change (defaults to .ghci and any .cabal file, unless when using stack or a custom command)"
-    ,reload = [] &= typ "PATH" &= help "Reload when the given file or directory contents change (defaults to none)"
-    ,directory = "." &= typDir &= name "C" &= help "Set the current directory"
-    ,outputfile = [] &= typFile &= name "o" &= help "File to write the full output to"
-    ,ignoreLoaded = False &= explicit &= name "ignore-loaded" &= help "Keep going if no files are loaded. Requires --reload to be set."
-    ,poll = Nothing &= typ "SECONDS" &= opt "0.1" &= explicit &= name "poll" &= help "Use polling every N seconds (defaults to using notifiers)"
-    ,max_messages = Nothing &= name "n" &= help "Maximum number of messages to print"
-    ,color = Auto &= name "colour" &= name "color" &= opt Always &= typ "always/never/auto" &= help "Color output (defaults to when the terminal supports it)"
-    ,setup = [] &= name "setup" &= typ "COMMAND" &= help "Setup commands to pass to ghci on stdin, usually :set <something>"
-    ,allow_eval = False &= name "allow-eval" &= help "Execute REPL commands in comments"
-    ,target = [] &= typ "TARGET" &= help "Target Component to build (e.g. lib:foo for Cabal, foo:lib for Stack)"
-    } &= verbosity &=
-    program "ghcid" &= summary ("Auto reloading GHCi daemon v" ++ showVersion version)
+    { command = ""
+        &= name "c"
+        &= typ "COMMAND"
+        &= help "Command to run (defaults to ghci or cabal repl)"
+    , arguments = []
+        &= args
+        &= typ "MODULE"
+    , test = []
+        &= name "T"
+        &= typ "EXPR"
+        &= help "Command to run after successful loading"
+    , test_message = "Running test..."
+        &= typ "MESSAGE"
+        &= help "Message to show before running the test (defaults to \"Running test...\")"
+    , run = []
+        &= name "r"
+        &= typ "EXPR"
+        &= opt "main"
+        &= help "Command to run after successful loading (like --test but defaults to main)"
+    , warnings = False
+        &= name "W"
+        &= help "Allow tests to run even with warnings"
+    , lint = Nothing
+        &= typ "COMMAND"
+        &= name "lint"
+        &= opt "hlint"
+        &= help "Linter to run if there are no errors. Defaults to hlint."
+    , no_status = False
+        &= name "S"
+        &= help "Suppress status messages"
+    , clear = False
+        &= name "clear"
+        &= help "Clear screen when reloading"
+    , reverse_errors = False
+        &= help "Reverse output order (works best with --no-height-limit)"
+    , no_height_limit = False
+        &= name "no-height-limit"
+        &= help "Disable height limit"
+    , height = Nothing
+        &= help "Number of lines to use (defaults to console height)"
+    , width = Nothing
+        &= name "w"
+        &= help "Number of columns to use (defaults to console width)"
+    , topmost = False
+        &= name "t"
+        &= help "Set window topmost (Windows only)"
+    , no_title = False
+        &= help "Don't update the shell title/icon"
+    , project = ""
+        &= typ "NAME"
+        &= help "Name of the project, defaults to current directory"
+    , restart = []
+        &= typ "PATH"
+        &= help "Restart the command when the given file or directory contents change (defaults to .ghci and any .cabal file, unless when using stack or a custom command)"
+    , reload = []
+        &= typ "PATH"
+        &= help "Reload when the given file or directory contents change (defaults to none)"
+    , directory = "."
+        &= typDir
+        &= name "C"
+        &= help "Set the current directory"
+    , outputfile = []
+        &= typFile
+        &= name "o"
+        &= help "File to write the full output to"
+    , ignoreLoaded = False
+        &= explicit
+        &= name "ignore-loaded"
+        &= help "Keep going if no files are loaded. Requires --reload to be set."
+    , poll = Nothing
+        &= typ "SECONDS"
+        &= opt "0.1"
+        &= explicit
+        &= name "poll"
+        &= help "Use polling every N seconds (defaults to using notifiers)"
+    , max_messages = Nothing
+        &= name "n"
+        &= help "Maximum number of messages to print"
+    , color = Auto
+        &= name "colour"
+        &= name "color"
+        &= opt Always
+        &= typ "always/never/auto"
+        &= help "Color output (defaults to when the terminal supports it)"
+    , setup = []
+        &= name "setup"
+        &= typ "COMMAND"
+        &= help "Setup commands to pass to ghci on stdin, usually :set <something>"
+    , allow_eval = False
+        &= name "allow-eval"
+        &= help "Execute REPL commands in comments"
+    , target = []
+        &= typ "TARGET"
+        &= help "Target Component to build (e.g. lib:foo for Cabal, foo:lib for Stack)"
+    }
+        &= verbosity
+        &=
+    program "ghcid"
+        &= summary ("Auto reloading GHCi daemon v" ++ showVersion version)
 
 
 {-
@@ -175,6 +246,7 @@ autoOptions o@Options{..}
         f c r = o{command = unwords $ c ++ map escape arguments, arguments = [], restart = restart ++ r, run = [], test = run ++ test}
 
 -- | Simple escaping for command line arguments. Wraps a string in double quotes if it contains a space.
+escape :: String -> String
 escape x | ' ' `elem` x = "\"" ++ x ++ "\""
          | otherwise = x
 
@@ -285,7 +357,7 @@ data ReloadMode = Reload | Restart deriving (Show, Ord, Eq)
 -- If we pure successfully, we restart the whole process
 -- Use Continue not () so that inadvertant exits don't restart
 runGhcid :: Session -> Waiter -> IO TermSize -> ([String] -> IO ()) -> Options -> IO Continue
-runGhcid session waiter termSize termOutput opts@Options{..} = do
+runGhcid session waiter termSize termOutput Options{..} = do
     let limitMessages = maybe id (take . max 1) max_messages
 
     let outputFill :: String -> Maybe (Int, [Load]) -> [EvalResult] -> [String] -> IO ()
@@ -323,7 +395,7 @@ runGhcid session waiter termSize termOutput opts@Options{..} = do
         putStrLn "--reload must be set when using --ignore-loaded"
         exitFailure
 
-    nextWait <- waitFiles waiter
+    nextWait0 <- waitFiles waiter
     (messages, loaded) <- sessionStart session command $
         map (":set " ++) (ghciFlagsUseful ++ ghciFlagsUsefulVersioned) ++ setup
 
@@ -332,9 +404,6 @@ runGhcid session waiter termSize termOutput opts@Options{..} = do
         exitFailure
 
     restart <- pure $ nubOrd $ restart ++ [x | LoadConfig x <- messages]
-    -- Note that we capture restarting items at this point, not before invoking the command
-    -- The reason is some restart items may be generated by the command itself
-    restartTimes <- mapM getModTime restart
 
     project <- if project /= "" then pure project else takeFileName <$> getCurrentDirectory
 
@@ -345,7 +414,7 @@ runGhcid session waiter termSize termOutput opts@Options{..} = do
         -> ([Load], [FilePath], [FilePath])
         -> IO Continue
       fire nextWait (messages, loaded, touched) = do
-            currTime <- getShortTime
+            currTime0 <- getShortTime
             let loadedCount = length loaded
             whenLoud $ do
                 outStrLn $ "%MESSAGES: " ++ show messages
@@ -353,22 +422,22 @@ runGhcid session waiter termSize termOutput opts@Options{..} = do
 
             let evals = [e | Eval e <- messages]
             let (countErrors, countWarnings) = both sum $ unzip
-                    [if loadSeverity == Error then (1,0) else (0,1) | m@Message{..} <- messages, loadMessage /= []]
+                    [if loadSeverity == Error then (1,0) else (0,1) | Message{..} <- messages, loadMessage /= []]
             let hasErrors = countErrors /= 0 || (countWarnings /= 0 && not warnings)
-            test <- pure $
+            test1 <- pure $
                 if null test || hasErrors then Nothing
                 else Just $ intercalate "\n" test
 
             unless no_title $ setWindowIcon $
-                if countErrors > 0 then IconError else if countWarnings > 0 then IconWarning else IconOK
+                if countErrors > (0 :: Int) then IconError else if countWarnings > 0 then IconWarning else IconOK
 
             let updateTitle extra = unless no_title $ setTitle $ unescape $
                     let f n msg = if n == 0 then "" else show n ++ " " ++ msg ++ ['s' | n > 1]
-                    in (if countErrors == 0 && countWarnings == 0 then allGoodMessage ++ ", at " ++ currTime else f countErrors "error" ++
+                    in (if countErrors == 0 && countWarnings == 0 then allGoodMessage ++ ", at " ++ currTime0 else f countErrors "error" ++
                        (if countErrors >  0 && countWarnings >  0 then ", " else "") ++ f countWarnings "warning") ++
                        " " ++ extra ++ [' ' | extra /= ""] ++ "- " ++ project
 
-            updateTitle $ if isJust test then "(running test)" else ""
+            updateTitle $ if isJust test1 then "(running test)" else ""
 
             -- order and restrict the messages
             -- nubOrdOn loadMessage because module cycles generate the same message at several different locations
@@ -380,17 +449,17 @@ runGhcid session waiter termSize termOutput opts@Options{..} = do
                     moduleSorted = sortOn (Down . f) msgError ++ msgWarn
                 pure $ (if reverse_errors then reverse else id) moduleSorted
 
-            outputFill currTime (Just (loadedCount, ordMessages)) evals [test_message | isJust test]
+            outputFill currTime0 (Just (loadedCount, ordMessages)) evals [test_message | isJust test1]
             forM_ outputfile $ \file ->
                 writeFile file $
                     if takeExtension file == ".json" then
                         showJSON [("loaded",map jString loaded),("messages",map jMessage $ filter isMessage messages)]
                     else
-                        unlines $ map unescape $ prettyOutput currTime loadedCount (limitMessages ordMessages) evals
+                        unlines $ map unescape $ prettyOutput currTime0 loadedCount (limitMessages ordMessages) evals
             when (null loaded && not ignoreLoaded) $ do
                 putStrLn "No files loaded, nothing to wait for. Fix the last error and restart."
                 exitFailure
-            whenJust test $ \t -> do
+            whenJust test1 $ \t -> do
                 whenLoud $ outStrLn $ "%TESTING: " ++ t
                 sessionExecAsync session t $ \stderr -> do
                     whenLoud $ outStrLn "%TESTING: Completed"
@@ -414,7 +483,7 @@ runGhcid session waiter termSize termOutput opts@Options{..} = do
                   Left err ->
                     (Reload, ["Error when waiting, if this happens repeatedly, raise a ghcid bug.", err])
                   Right files ->
-                    case partition (\(f, mode) -> mode == Reload) files of
+                    case partition (\(_f, mode') -> mode' == Reload) files of
                       -- Prefer restarts over reloads. E.g., in case of both '--reload=dir'
                       -- and '--restart=dir', ghcid would restart instead of reload.
                       (_, rs@(_:_)) -> (Restart, map fst rs)
@@ -424,14 +493,14 @@ runGhcid session waiter termSize termOutput opts@Options{..} = do
             case reason1 of
               (Reload, reason2) -> do
                 unless no_status $ outputFill currTime Nothing evals $ "Reloading..." : map ("  " ++) reason2
-                nextWait <- waitFiles waiter
-                fire nextWait =<< sessionReload session
+                nextWait1 <- waitFiles waiter
+                fire nextWait1 =<< sessionReload session
               (Restart, reason2) -> do
                 -- exit cleanly, since the whole thing is wrapped in a forever
                 unless no_status $ outputFill currTime Nothing evals $ "Restarting..." : map ("  " ++) reason2
                 pure Continue
 
-    fire nextWait (messages, loaded, loaded)
+    fire nextWait0 (messages, loaded, loaded)
 
 
 -- | Given an available height, and a set of messages to display, show them as best you can.
@@ -458,13 +527,15 @@ printEval (EvalResult file (line, col) msg result) =
 showJSON :: [(String, [String])] -> String
 showJSON xs = unlines $ concat $
     [ ((if i == 0 then "{" else ",") ++ jString a ++ ":") :
-      ["  " ++ (if j == 0 then "[" else ",") ++ b | (j,b) <- zipFrom 0 bs] ++
+      ["  " ++ (if j == 0 then "[" else ",") ++ b | (j,b) <- zipFrom (0 :: Int) bs] ++
       [if null bs then "  []" else "  ]"]
-    | (i,(a,bs)) <- zipFrom 0 xs] ++
+    | (i,(a,bs)) <- zipFrom (0 :: Int) xs] ++
     [["}"]]
 
+jString :: String -> String
 jString x = "\"" ++ escapeJSON x ++ "\""
 
+jMessage :: Load -> String
 jMessage Message{..} = jDict $
     [("severity",jString $ show loadSeverity)
     ,("file",jString loadFile)] ++
@@ -472,5 +543,7 @@ jMessage Message{..} = jDict $
     [("end", pair loadFilePosEnd) | loadFilePos /= loadFilePosEnd] ++
     [("message", jString $ intercalate "\n" loadMessage)]
     where pair (a,b) = "[" ++ show a ++ "," ++ show b ++ "]"
+jMessage _ = error "jMessage: Incomplete patterns"
 
+jDict :: [(String, String)] -> String
 jDict xs = "{" ++ intercalate ", " [jString a ++ ":" ++ b | (a,b) <- xs] ++ "}"

@@ -1,5 +1,7 @@
 {-# LANGUAGE PatternGuards, ViewPatterns, TupleSections #-}
 
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
+
 -- | Parses the output from GHCi
 module Ghcid.Parser(
     parseShowModules, parseShowPaths, parseLoad

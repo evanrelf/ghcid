@@ -8,7 +8,7 @@ module Ghcid(
     execStream, showModules, showPaths, reload, exec, quit
     ) where
 
-import System.IO
+import System.IO hiding (stdout, stderr)
 import System.IO.Error
 import System.Process
 import System.Time.Extra
@@ -46,9 +46,13 @@ instance Eq Ghci where
     a == b = ghciUnique a == ghciUnique b
 
 
-withCreateProc proc f = do
-    let undo (_, _, _, proc) = ignored $ terminateProcess proc
-    bracketOnError (createProcess proc) undo $ \(a,b,c,d) -> f a b c d
+withCreateProc
+  :: CreateProcess
+  -> (Maybe Handle -> Maybe Handle -> Maybe Handle -> ProcessHandle -> IO a)
+  -> IO a
+withCreateProc procConfig f = do
+    let undo (_, _, _, procHandle) = ignored $ terminateProcess procHandle
+    bracketOnError (createProcess procConfig) undo $ \(a,b,c,d) -> f a b c d
 
 -- | Start GHCi by running the described process, returning  the result of the initial loading.
 --   If you do not call 'stopGhci' then the underlying process may be leaked.
@@ -60,9 +64,12 @@ withCreateProc proc f = do
 --
 --   @since 0.6.11
 startGhciProcess :: CreateProcess -> (Stream -> String -> IO ()) -> IO (Ghci, [Load])
-startGhciProcess process echo0 = do
-    let proc = process{std_in=CreatePipe, std_out=CreatePipe, std_err=CreatePipe, create_group=True}
-    withCreateProc proc $ \(Just inp) (Just out) (Just err) ghciProcess -> do
+startGhciProcess procConfig0 echo0 = do
+    let procConfig = procConfig0{std_in=CreatePipe, std_out=CreatePipe, std_err=CreatePipe, create_group=True}
+    withCreateProc procConfig $ \maybeInp maybeOut maybeErr ghciProcess -> do
+        let inp = fromJust maybeInp
+        let out = fromJust maybeOut
+        let err = fromJust maybeErr
 
         hSetBuffering out LineBuffering
         hSetBuffering err LineBuffering
@@ -82,7 +89,7 @@ startGhciProcess process echo0 = do
 
         -- At various points I need to ensure everything the user is waiting for has completed
         -- So I send messages on stdout/stderr and wait for them to arrive
-        syncCount <- newVar 0
+        syncCount <- newVar (0 :: Int)
         let syncReplay = do
                 i <- readVar syncCount
                 -- useful to avoid overloaded strings by showing the ['a','b','c'] form, see #109
@@ -117,16 +124,16 @@ startGhciProcess process echo0 = do
             consume2 msg finish = do
                 -- fetch the operations in different threads as hGetLine may block
                 -- and can't be aborted by async exceptions, see #154
-                res1 <- onceFork $ consume Stdout (finish Stdout)
-                res2 <- onceFork $ consume Stderr (finish Stderr)
-                res1 <- res1
-                res2 <- res2
-                let raise msg err = throwIO $ case cmdspec process of
-                        ShellCommand cmd -> UnexpectedExit cmd msg err
-                        RawCommand exe args -> UnexpectedExit (unwords (exe:args)) msg err
+                res1Action <- onceFork $ consume Stdout (finish Stdout)
+                res2Action <- onceFork $ consume Stderr (finish Stderr)
+                res1 <- res1Action
+                res2 <- res2Action
+                let raise msg' err' = throwIO $ case cmdspec procConfig of
+                        ShellCommand cmd -> UnexpectedExit cmd msg' err'
+                        RawCommand exe args -> UnexpectedExit (unwords (exe:args)) msg err'
                 case (res1, res2) of
                     (Right v1, Right v2) -> pure (v1, v2)
-                    (_, Left err) -> raise msg err
+                    (_, Left err') -> raise msg err'
                     (_, Right _) -> raise msg Nothing
 
         -- held while interrupting, and briefly held when starting an exec
@@ -142,7 +149,11 @@ startGhciProcess process echo0 = do
                     writeInp command
                     stop <- syncFresh
                     void $ consume2 command $ \strm s ->
-                        if stop s then pure $ Just () else do echo strm s; pure Nothing
+                        if stop s then
+                          pure $ Just ()
+                        else do
+                          void $ echo strm s
+                          pure Nothing
                 when (isNothing res) $
                     fail "Ghcid.exec, computation is already running, must be used single-threaded"
 
@@ -152,7 +163,7 @@ startGhciProcess process echo0 = do
                     interruptProcessGroupOf ghciProcess
                     -- let the person running ghciExec finish, since their sync messages
                     -- may have been the ones that got interrupted
-                    syncReplay
+                    void $ syncReplay
                     -- now wait for the person doing ghciExec to have actually left the lock
                     withLock isRunning $ pure ()
                     -- there may have been two syncs sent, so now do a fresh sync to clear everything
@@ -166,13 +177,13 @@ startGhciProcess process echo0 = do
         stdout <- newIORef []
         stderr <- newIORef []
         sync <- newIORef $ const False
-        consume2 "" $ \strm s -> do
+        void $ consume2 "" $ \strm s0 -> do
             stop <- readIORef sync
-            if stop s then
+            if stop s0 then
                 pure $ Just ()
             else do
                 -- there may be some initial prompts on stdout before I set the prompt properly
-                s <- pure $ maybe s (removePrefix . snd) $ stripInfix ghcid_prefix s
+                s <- pure $ maybe s0 (removePrefix . snd) $ stripInfix ghcid_prefix s0
                 whenLoud $ outStrLn $ "%STDOUT2: " ++ s
                 modifyIORef (if strm == Stdout then stdout else stderr) (s:)
                 when (any (`isPrefixOf` s) [ "GHCi, version "
@@ -268,7 +279,7 @@ quit ghci =  do
 --   within 5 seconds it just terminates the process.
 stopGhci :: Ghci -> IO ()
 stopGhci ghci = do
-    forkIO $ do
+    void $ forkIO $ do
         -- if nicely doesn't work, kill ghci as the process level
         sleep 5
         terminateProcess $ process ghci

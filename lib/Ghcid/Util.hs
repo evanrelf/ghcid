@@ -71,7 +71,7 @@ lock = unsafePerformIO newLock
 -- | Output a string with some level of locking
 outStr :: String -> IO ()
 outStr msg = do
-    evaluate $ length $ show msg
+    void $ evaluate $ length $ show msg
     withLock lock $ putStr msg
 
 outStrLn :: String -> IO ()
@@ -81,7 +81,7 @@ outStrLn xs = outStr $ xs ++ "\n"
 ignored :: IO () -> IO ()
 ignored act = do
     bar <- newBarrier
-    forkFinally act $ const $ signalBarrier bar ()
+    void $ forkFinally act $ const $ signalBarrier bar ()
     waitBarrier bar
 
 -- | The message to show when no errors have been reported
@@ -116,17 +116,18 @@ getModTimeResolutionCache = unsafePerformIO $ withTempDir $ \dir -> do
 
     -- with 10 measurements can get a bit slow, see Shake issue tracker #451
     -- if it rounds to a second then 1st will be a fraction, but 2nd will be full second
-    mtime <- fmap maximum $ forM [1..3] $ \i -> fmap fst $ duration $ do
+    mtime <- do
+      mtime <- fmap maximum $ forM [1..3 :: Int] $ \i -> fmap fst $ duration $ do
         writeFile file $ show i
         t1 <- getModificationTime file
-        flip loopM 0 $ \j -> do
+        flip loopM (0 :: Int) $ \j -> do
             writeFile file $ show (i,j)
             t2 <- getModificationTime file
             pure $ if t1 == t2 then Left $ j+1 else Right ()
 
-    -- GHC 7.6 and below only have 1 sec resolution timestamps
-    mtime <- pure $ if compilerVersion < makeVersion [7,8] then max mtime 1 else mtime
+      -- GHC 7.6 and below only have 1 sec resolution timestamps
+      pure $ if compilerVersion < makeVersion [7,8] then max mtime 1 else mtime
 
-    putStrLn $ "Longest file modification time lag was " ++ show (ceiling (mtime * 1000)) ++ "ms"
+    putStrLn $ "Longest file modification time lag was " ++ show (ceiling (mtime * 1000) :: Integer) ++ "ms"
     -- add a little bit of safety, but if it's really quick, don't make it that much slower
     pure $ mtime + min 0.1 mtime
