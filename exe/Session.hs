@@ -119,7 +119,7 @@ sessionStart Session{ ghci = ghciIORef, ..} cmd setup = do
         void $ Concurrent.forkIO $ kill v
 
     -- start the new
-    Util.outStrLn $ "Loading " ++ cmd ++ " ..."
+    Util.outStrLn $ "Loading " <> cmd <> " ..."
     (v, messages0) <- Exception.mask \unmask -> do
         (v, messages) <- unmask $ startGhci cmd Nothing $ const Util.outStrLn
         writeIORef ghciIORef $ Just v
@@ -142,12 +142,12 @@ sessionStart Session{ ghci = ghciIORef, ..} cmd setup = do
         whenJustM (readIORef ghciIORef) \ghci ->
             when (ghci == v) do
                 System.Time.sleep 0.3 -- give anyone reading from the stream a chance to throw first
-                Concurrent.throwTo withThread $ Exception.ErrorCall $ "Command \"" ++ cmd ++ "\" exited unexpectedly with " ++ show code
+                Concurrent.throwTo withThread $ Exception.ErrorCall $ "Command \"" <> cmd <> "\" exited unexpectedly with " <> show code
 
     -- handle what the process returned
     let messages2 = mapMaybe tidyMessage messages1
     writeIORef warnings $ getWarnings messages2
-    pure (messages2 ++ evals, loaded)
+    pure (messages2 <> evals, loaded)
 
 
 getWarnings :: [Load] -> [Load]
@@ -208,7 +208,7 @@ multilineCommandSuffix :: String
 multilineCommandSuffix = "<$ -}"
 
 wrapGhciMultiline :: [String] -> [String]
-wrapGhciMultiline xs = [":{"] ++ xs ++ [":}"]
+wrapGhciMultiline xs = [":{"] <> xs <> [":}"]
 
 -- | Reload, returning the same information as 'sessionStart'. In particular, any
 --   information that GHCi doesn't repeat (warnings from loaded modules) will be
@@ -236,10 +236,10 @@ sessionReload session@Session{ ghci = ghciIORef, ..} = do
         -- only keep old warnings from files that are still loaded, but did not reload
         let validWarn w = loadFile w `elem` loaded && loadFile w `notElem` reloaded
         -- newest warnings always go first, so the file you hit save on most recently has warnings first
-        let messages = messages0 ++ filter validWarn warn
+        let messages = messages0 <> filter validWarn warn
 
         writeIORef warnings $ getWarnings messages
-        pure (messages ++ evals, List.nubOrd (loaded ++ reloaded), reloaded)
+        pure (messages <> evals, List.nubOrd (loaded <> reloaded), reloaded)
 
 
 -- | Run an exec operation asynchronously. Should not be a @:reload@ or similar.

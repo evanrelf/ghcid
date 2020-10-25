@@ -22,18 +22,18 @@ data GhciError = UnexpectedExit
     { ghciErrorCmd :: String
     , ghciErrorMsg :: String
     , ghciErrorLastStdErr :: Maybe String
-    } deriving (Show, Eq, Ord, Typeable, Data)
+    } deriving stock (Show, Eq, Ord, Typeable, Data)
 
 -- | Make GhciError an exception
 instance Exception GhciError
 
 -- | The stream Ghci is talking over.
 data Stream = Stdout | Stderr
-    deriving (Show, Eq, Ord, Bounded, Enum, Read, Typeable, Data)
+    deriving stock (Show, Eq, Ord, Bounded, Enum, Read, Typeable, Data)
 
 -- | Severity of messages
 data Severity = Warning | Error
-    deriving (Show, Eq, Ord, Bounded, Enum, Read, Typeable, Data)
+    deriving stock (Show, Eq, Ord, Bounded, Enum, Read, Typeable, Data)
 
 -- | Load messages
 data Load
@@ -56,14 +56,14 @@ data Load
         }
     | -- | A response to an eval comment
       Eval EvalResult
-    deriving (Show, Eq, Ord)
+    deriving stock (Show, Eq, Ord)
 
 data EvalResult = EvalResult
     { evalFile :: FilePath -- ^ The file that was being loaded, @.ghci@.
     , evalFilePos :: (Int, Int)
     , evalCommand :: String
     , evalResult :: String
-    } deriving (Show, Eq, Ord)
+    } deriving stock (Show, Eq, Ord)
 
 -- | Is a 'Load' a 'Message'?
 isMessage :: Load -> Bool

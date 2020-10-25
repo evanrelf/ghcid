@@ -50,7 +50,7 @@ listContentsInside test dir = do
     (dirs,files) <- Monad.partitionM Directory.doesDirectoryExist =<< Directory.listContents dir
     recurse <- filterM test dirs
     rest <- Monad.concatMapM (listContentsInside test) recurse
-    pure $ FilePath.addTrailingPathSeparator dir : files ++ rest
+    pure $ FilePath.addTrailingPathSeparator dir : files <> rest
 
 -- | Given the pattern:
 --
@@ -72,7 +72,7 @@ waitFiles waiter = do
 
     go :: UTCTime -> [(FilePath, a)] -> IO (Either String [(FilePath, a)])
     go base files = do
-        Verbosity.whenLoud $ Util.outStrLn $ "%WAITING: " ++ String.unwords (map fst files)
+        Verbosity.whenLoud $ Util.outStrLn $ "%WAITING: " <> String.unwords (map fst files)
         -- As listContentsInside pures directories, we are waiting on them explicitly and so
         -- will pick up new files, as creating a new file changes the containing directory's modtime.
         files <- Monad.concatForM files \(file, a) ->
@@ -86,11 +86,11 @@ waitFiles waiter = do
                     sequence_ $ Map.elems del
                     new <- forM (Set.toList $ dirs `Set.difference` Map.keysSet keep) \dir -> do
                         can <- FsNotify.watchDir manager (fromString dir) (const True) \event -> do
-                            Verbosity.whenLoud $ Util.outStrLn $ "%NOTIFY: " ++ show event
+                            Verbosity.whenLoud $ Util.outStrLn $ "%NOTIFY: " <> show event
                             void $ tryPutMVar kick ()
                         pure (dir, can)
                     let mp2 = keep `Map.union` Map.fromList new
-                    Verbosity.whenLoud $ Util.outStrLn $ "%WAITING: " ++ String.unwords (Map.keys mp2)
+                    Verbosity.whenLoud $ Util.outStrLn $ "%WAITING: " <> String.unwords (Map.keys mp2)
                     pure mp2
                 void $ tryTakeMVar kick
         new <- mapM (Util.getModTime . fst) files
@@ -115,7 +115,7 @@ waitFiles waiter = do
                         -- if someone is deleting a needed file, give them some space to put the file back
                         -- typically caused by VIM
                         -- but try not to
-                        Verbosity.whenLoud $ Util.outStrLn $ "%WAITING: Waiting max of 1s due to file removal, " ++ String.unwords (List.nubOrd (map fst disappeared))
+                        Verbosity.whenLoud $ Util.outStrLn $ "%WAITING: Waiting max of 1s due to file removal, " <> String.unwords (List.nubOrd (map fst disappeared))
                         -- at most 20 iterations, but stop as soon as the file pures
                         void $ flip Monad.firstJustM (replicate 20 ()) \_ -> do
                             System.Time.sleep 0.05

@@ -44,7 +44,7 @@ parseLoad (map Esc -> xs) = List.nubOrd $ f xs
         -- [1 of 2] Compiling GHCi             ( GHCi.hs, interpreted )
         f (xs:rest)
             | Just xs <- Escape.stripPrefixE "[" xs
-            = map (uncurry Loading) (parseShowModules [drop 11 $ dropWhile (/= ']') $ Escape.unescapeE xs]) ++
+            = map (uncurry Loading) (parseShowModules [drop 11 $ dropWhile (/= ']') $ Escape.unescapeE xs]) <>
               f rest
 
         -- GHCi.hs:81:1: Warning: Defined but not used: `foo'
@@ -75,7 +75,7 @@ parseLoad (map Esc -> xs) = List.nubOrd $ f xs
             | Escape.unescapeE x == "Module imports form a cycle:"
             , (xs,rest) <- List.span leadingWhitespaceE xs
             , let ms = [takeWhile (/= ')') x | x <- xs, '(':x <- [dropWhile (/= '(') $ Escape.unescapeE x]]
-            = [Message Error m (0,0) (0,0) (map Escape.fromEsc $ x:xs) | m <- List.nubOrd ms] ++ f rest
+            = [Message Error m (0,0) (0,0) (map Escape.fromEsc $ x:xs) | m <- List.nubOrd ms] <> f rest
 
         -- Loaded GHCi configuration from C:\Neil\ghcid\.ghci
         f (x:xs)
@@ -115,16 +115,18 @@ parsePosition x
             pure ((l,c),x)
 
 
--- After the file location, message bodies are indented (perhaps prefixed by a line number)
+-- After the file location, message bodies are indented (perhaps prefixed by a
+-- line number)
 isMessageBody :: Esc -> Bool
 isMessageBody xs = Escape.isPrefixOfE " " xs || case Escape.stripInfixE "|" xs of
   Just (prefix, _) | all (\x -> Char.isSpace x || Char.isDigit x) $ Escape.unescapeE prefix -> True
   _ -> False
 
--- A filename, followed by a colon - be careful to handle Windows drive letters, see #61
+-- A filename, followed by a colon - be careful to handle Windows drive letters,
+-- see #61
 breakFileColon :: Esc -> Maybe (FilePath, Esc)
 breakFileColon xs = case Escape.stripInfixE ":" xs of
     Nothing -> Nothing
     Just (a,b)
-        | [drive] <- Escape.unescapeE a, Char.isLetter drive -> first ((++) [drive,':'] . Escape.unescapeE) <$> Escape.stripInfixE ":" b
+        | [drive] <- Escape.unescapeE a, Char.isLetter drive -> first ((<>) [drive,':'] . Escape.unescapeE) <$> Escape.stripInfixE ":" b
         | otherwise -> Just (Escape.unescapeE a, b)
