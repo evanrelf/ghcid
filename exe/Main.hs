@@ -415,7 +415,7 @@ runGhcid session waiter termSize termOutput Options{..} = do
                 outStrLn $ "%LOADED: " ++ show loaded
 
             let evals = [e | Eval e <- messages]
-            let (countErrors, countWarnings) = both sum $ unzip
+            let (countErrors, countWarnings) = both (sum :: [Int] -> Int) $ unzip
                     [if loadSeverity == Error then (1,0) else (0,1) | Message{..} <- messages, loadMessage /= []]
             let hasErrors = countErrors /= 0 || (countWarnings /= 0 && not warnings)
             let test1 =

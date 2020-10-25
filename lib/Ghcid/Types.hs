@@ -15,7 +15,7 @@ module Ghcid.Types
   )
 where
 
-import Data.Data
+import Data.Data (Data)
 
 -- | GHCi shut down
 data GhciError = UnexpectedExit

@@ -21,24 +21,29 @@ module Ghcid
   )
 where
 
-import Control.Concurrent.Extra
-import Control.Exception.Extra
-import Data.Unique
+import Data.Unique (Unique)
+import Ghcid.Types
+  ( GhciError (..)
+  , Load (..)
+  , Severity (..)
+  , Stream (..)
+  , isLoading
+  )
 import Relude.Extra.Enum (next)
-import System.Console.CmdArgs.Verbosity
-import System.IO hiding (stdout, stderr)
-import System.IO.Error
-import System.Process
-import System.Time.Extra
 
+import qualified Control.Concurrent.Extra as Concurrent
+import qualified Control.Exception.Extra as Exception
 import qualified Data.List.Extra as List
 import qualified Data.Maybe as Maybe
 import qualified Data.String as String
-
-import Ghcid.Parser
-import Ghcid.Types as T
-import Ghcid.Util
-
+import qualified Data.Unique as Unique
+import qualified Ghcid.Parser as Parser
+import qualified Ghcid.Util as Util
+import qualified System.Console.CmdArgs.Verbosity as Verbosity
+import qualified System.IO as IO
+import qualified System.IO.Error as IO.Error
+import qualified System.Process as Process
+import qualified System.Time.Extra as System.Time
 
 -- | A GHCi session. Created with 'startGhci', closed with 'stopGhci'.
 --
@@ -46,7 +51,7 @@ import Ghcid.Util
 --   or an error will be raised. The only exception is 'interrupt', which aborts
 --   a running computation, or does nothing if no computation is running.
 data Ghci = Ghci
-    { ghciProcess :: ProcessHandle
+    { ghciProcess :: Process.ProcessHandle
     , ghciInterrupt :: IO ()
     , ghciExec :: String -> (Stream -> String -> IO ()) -> IO ()
     , ghciUnique :: Unique
@@ -57,12 +62,12 @@ instance Eq Ghci where
 
 
 withCreateProc
-  :: CreateProcess
-  -> (Maybe Handle -> Maybe Handle -> Maybe Handle -> ProcessHandle -> IO a)
+  :: Process.CreateProcess
+  -> (Maybe Handle -> Maybe Handle -> Maybe Handle -> Process.ProcessHandle -> IO a)
   -> IO a
 withCreateProc procConfig f = do
-    let undo (_, _, _, procHandle) = ignored $ terminateProcess procHandle
-    bracketOnError (createProcess procConfig) undo \(a,b,c,d) -> f a b c d
+    let undo (_, _, _, procHandle) = Util.ignored $ Process.terminateProcess procHandle
+    Exception.bracketOnError (Process.createProcess procConfig) undo \(a,b,c,d) -> f a b c d
 
 -- | Start GHCi by running the described process, returning  the result of the initial loading.
 --   If you do not call 'stopGhci' then the underlying process may be leaked.
@@ -73,35 +78,40 @@ withCreateProc procConfig f = do
 --   'System.Process.shell' and 'System.Process.proc'.
 --
 --   @since 0.6.11
-startGhciProcess :: CreateProcess -> (Stream -> String -> IO ()) -> IO (Ghci, [Load])
+startGhciProcess :: Process.CreateProcess -> (Stream -> String -> IO ()) -> IO (Ghci, [Load])
 startGhciProcess procConfig0 echo0 = do
-    let procConfig = procConfig0{std_in=CreatePipe, std_out=CreatePipe, std_err=CreatePipe, create_group=True}
+    let procConfig = procConfig0
+          { Process.std_in = Process.CreatePipe
+          , Process.std_out = Process.CreatePipe
+          , Process.std_err = Process.CreatePipe
+          , Process.create_group = True
+          }
     withCreateProc procConfig \maybeInp maybeOut maybeErr ghciProcess -> do
         let inp = Maybe.fromJust maybeInp
         let out = Maybe.fromJust maybeOut
         let err = Maybe.fromJust maybeErr
 
-        hSetBuffering out LineBuffering
-        hSetBuffering err LineBuffering
-        hSetBuffering inp LineBuffering
+        IO.hSetBuffering out IO.LineBuffering
+        IO.hSetBuffering err IO.LineBuffering
+        IO.hSetBuffering inp IO.LineBuffering
         let writeInp x = do
-                whenLoud $ outStrLn $ "%STDIN: " ++ x
-                hPutStrLn inp x
+                Verbosity.whenLoud $ Util.outStrLn $ "%STDIN: " ++ x
+                IO.hPutStrLn inp x
 
         -- Some programs (e.g. stack) might use stdin before starting ghci (see #57)
         -- Send them an empty line
-        hPutStrLn inp ""
+        IO.hPutStrLn inp ""
 
         -- I'd like the GHCi prompt to go away, but that's not possible, so I set it to a special
         -- string and filter that out.
         let ghcid_prefix = "#~GHCID-START~#"
-        let removePrefix = dropPrefixRepeatedly ghcid_prefix
+        let removePrefix = Util.dropPrefixRepeatedly ghcid_prefix
 
         -- At various points I need to ensure everything the user is waiting for has completed
         -- So I send messages on stdout/stderr and wait for them to arrive
-        syncCount <- newVar (0 :: Int)
+        syncCount <- Concurrent.newVar (0 :: Int)
         let syncReplay = do
-                i <- readVar syncCount
+                i <- Concurrent.readVar syncCount
                 -- useful to avoid overloaded strings by showing the ['a','b','c'] form, see #109
                 let showStr xs = "[" ++ intercalate "," (map show xs) ++ "]"
                 let msg = "#~GHCID-FINISH-" ++ show i ++ "~#"
@@ -111,7 +121,7 @@ startGhciProcess procConfig0 echo0 = do
                            "INTERNAL_GHCID.hPutStrLn INTERNAL_GHCID.stderr " ++ showStr msg
                 pure $ List.isInfixOf msg
         let syncFresh = do
-                modifyVar_ syncCount $ pure . next
+                Concurrent.modifyVar_ syncCount $ pure . next
                 syncReplay
 
         -- Consume from a stream until EOF (pure Nothing) or some predicate returns Just
@@ -119,11 +129,11 @@ startGhciProcess procConfig0 echo0 = do
             consume name finish = do
                 let h = if name == Stdout then out else err
                 flip fix Nothing \rec oldMsg -> do
-                    el <- tryBool isEOFError $ hGetLine h
+                    el <- Exception.tryBool IO.Error.isEOFError $ IO.hGetLine h
                     case el of
                         Left _ -> pure $ Left oldMsg
                         Right l -> do
-                            whenLoud $ outStrLn $ "%" ++ List.upper (show name) ++ ": " ++ l
+                            Verbosity.whenLoud $ Util.outStrLn $ "%" ++ List.upper (show name) ++ ": " ++ l
                             let msg = removePrefix l
                             res <- finish msg
                             case res of
@@ -134,13 +144,13 @@ startGhciProcess procConfig0 echo0 = do
             consume2 msg finish = do
                 -- fetch the operations in different threads as hGetLine may block
                 -- and can't be aborted by async exceptions, see #154
-                res1Action <- onceFork $ consume Stdout (finish Stdout)
-                res2Action <- onceFork $ consume Stderr (finish Stderr)
+                res1Action <- Concurrent.onceFork $ consume Stdout (finish Stdout)
+                res2Action <- Concurrent.onceFork $ consume Stderr (finish Stderr)
                 res1 <- res1Action
                 res2 <- res2Action
-                let raise msg' err' = throwIO $ case cmdspec procConfig of
-                        ShellCommand cmd -> UnexpectedExit cmd msg' err'
-                        RawCommand exe args -> UnexpectedExit (String.unwords (exe:args)) msg err'
+                let raise msg' err' = Exception.throwIO $ case Process.cmdspec procConfig of
+                        Process.ShellCommand cmd -> UnexpectedExit cmd msg' err'
+                        Process.RawCommand exe args -> UnexpectedExit (String.unwords (exe:args)) msg err'
                 case (res1, res2) of
                     (Right v1, Right v2) -> pure (v1, v2)
                     (_, Left err') -> raise msg err'
@@ -148,14 +158,14 @@ startGhciProcess procConfig0 echo0 = do
 
         -- held while interrupting, and briefly held when starting an exec
         -- ensures exec values queue up behind an ongoing interrupt and no two interrupts run at once
-        isInterrupting <- newLock
+        isInterrupting <- Concurrent.newLock
 
         -- is anyone running running an exec statement, ensure only one person talks to ghci at a time
-        isRunning <- newLock
+        isRunning <- Concurrent.newLock
 
         let ghciExec command echo = do
-                withLock isInterrupting pass
-                res <- withLockTry isRunning do
+                Concurrent.withLock isInterrupting pass
+                res <- Concurrent.withLockTry isRunning do
                     writeInp command
                     stop <- syncFresh
                     void $ consume2 command \strm s ->
@@ -167,20 +177,20 @@ startGhciProcess procConfig0 echo0 = do
                 whenNothing res $
                     fail "Ghcid.exec, computation is already running, must be used single-threaded"
 
-        let ghciInterrupt = withLock isInterrupting $
-                whenNothingM (withLockTry isRunning pass) do
-                    whenLoud $ outStrLn "%INTERRUPT"
-                    interruptProcessGroupOf ghciProcess
+        let ghciInterrupt = Concurrent.withLock isInterrupting $
+                whenNothingM (Concurrent.withLockTry isRunning pass) do
+                    Verbosity.whenLoud $ Util.outStrLn "%INTERRUPT"
+                    Process.interruptProcessGroupOf ghciProcess
                     -- let the person running ghciExec finish, since their sync messages
                     -- may have been the ones that got interrupted
                     void syncReplay
                     -- now wait for the person doing ghciExec to have actually left the lock
-                    withLock isRunning pass
+                    Concurrent.withLock isRunning pass
                     -- there may have been two syncs sent, so now do a fresh sync to clear everything
                     stop <- syncFresh
                     void $ consume2 "Interrupt" \_ s -> pure $ if stop s then Just () else Nothing
 
-        ghciUnique <- newUnique
+        ghciUnique <- Unique.newUnique
         let ghci = Ghci{..}
 
         -- Now wait for 'GHCi, version' to appear before sending anything real, required for #57
@@ -194,7 +204,7 @@ startGhciProcess procConfig0 echo0 = do
             else do
                 -- there may be some initial prompts on stdout before I set the prompt properly
                 let s = maybe s0 (removePrefix . snd) $ List.stripInfix ghcid_prefix s0
-                whenLoud $ outStrLn $ "%STDOUT2: " ++ s
+                Verbosity.whenLoud $ Util.outStrLn $ "%STDOUT2: " ++ s
                 modifyIORef (if strm == Stdout then stdout else stderr) (s:)
                 when (any (`isPrefixOf` s) [ "GHCi, version "
                                            , "GHCJSi, version "
@@ -208,12 +218,12 @@ startGhciProcess procConfig0 echo0 = do
                     writeInp $ ":set prompt-cont " ++ ghcid_prefix
 
                     -- failure isn't harmful, so do them one-by-one
-                    forM_ (ghciFlagsRequired ++ ghciFlagsRequiredVersioned) \flag ->
+                    forM_ (Util.ghciFlagsRequired ++ Util.ghciFlagsRequiredVersioned) \flag ->
                         writeInp $ ":set " ++ flag
                     writeIORef sync =<< syncFresh
                 echo0 strm s
                 pure Nothing
-        r1 <- parseLoad . reverse <$> ((++) <$> readIORef stderr <*> readIORef stdout)
+        r1 <- Parser.parseLoad . reverse <$> ((++) <$> readIORef stderr <*> readIORef stdout)
         -- see #132, if hide-source-paths was turned on the modules didn't get printed out properly
         -- so try a showModules to capture the information again
         r2 <- if any isLoading r1 then pure [] else map (uncurry Loading) <$> showModules ghci
@@ -227,7 +237,7 @@ startGhci
     -> Maybe FilePath -- ^ Working directory
     -> (Stream -> String -> IO ()) -- ^ Output callback
     -> IO (Ghci, [Load])
-startGhci cmd directory = startGhciProcess (shell cmd){cwd=directory}
+startGhci cmd directory = startGhciProcess (Process.shell cmd){Process.cwd=directory}
 
 
 -- | Execute a command, calling a callback on each response.
@@ -241,7 +251,7 @@ interrupt :: Ghci -> IO ()
 interrupt = ghciInterrupt
 
 -- | Obtain the progress handle behind a GHCi instance.
-process :: Ghci -> ProcessHandle
+process :: Ghci -> Process.ProcessHandle
 process = ghciProcess
 
 
@@ -265,32 +275,32 @@ exec ghci cmd = execBuffer ghci cmd \_ _ -> pass
 
 -- | List the modules currently loaded, with module name and source file.
 showModules :: Ghci -> IO [(String,FilePath)]
-showModules ghci = parseShowModules <$> exec ghci ":show modules"
+showModules ghci = Parser.parseShowModules <$> exec ghci ":show modules"
 
 -- | Return the current working directory, and a list of module import paths
 showPaths :: Ghci -> IO (FilePath, [FilePath])
-showPaths ghci = parseShowPaths <$> exec ghci ":show paths"
+showPaths ghci = Parser.parseShowPaths <$> exec ghci ":show paths"
 
 -- | Perform a reload, list the messages that reload generated.
 reload :: Ghci -> IO [Load]
-reload ghci = parseLoad <$> exec ghci ":reload"
+reload ghci = Parser.parseLoad <$> exec ghci ":reload"
 
 -- | Send @:quit@ and wait for the process to quit.
 quit :: Ghci -> IO ()
 quit ghci =  do
     interrupt ghci
-    handle (\UnexpectedExit{} -> pass) $ void $ exec ghci ":quit"
+    Exception.handle (\UnexpectedExit{} -> pass) $ void $ exec ghci ":quit"
     -- Be aware that waitForProcess has a race condition, see https://github.com/haskell/process/issues/46.
     -- Therefore just ignore the exception anyway, its probably already terminated.
-    ignored $ void $ waitForProcess $ process ghci
+    Util.ignored $ void $ Process.waitForProcess $ process ghci
 
 
 -- | Stop GHCi. Attempts to interrupt and execute @:quit:@, but if that doesn't complete
 --   within 5 seconds it just terminates the process.
 stopGhci :: Ghci -> IO ()
 stopGhci ghci = do
-    void $ forkIO do
+    void $ Concurrent.forkIO do
         -- if nicely doesn't work, kill ghci as the process level
-        sleep 5
-        terminateProcess $ process ghci
+        System.Time.sleep 5
+        Process.terminateProcess $ process ghci
     quit ghci

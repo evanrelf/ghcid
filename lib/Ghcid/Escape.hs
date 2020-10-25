@@ -16,9 +16,8 @@ module Ghcid.Escape
   )
 where
 
-import Data.Either.Extra
-
 import qualified Data.Char as Char
+import qualified Data.Either.Extra as Either
 import qualified Data.String as String
 import qualified Data.Tuple.Extra as Tuple
 
@@ -58,7 +57,7 @@ stripInfixE :: String -> Esc -> Maybe (Esc, Esc)
 stripInfixE needle haystack | Just rest <- stripPrefixE needle haystack = Just (Esc [], rest)
 stripInfixE needle e = case unesc e of
     Nothing -> Nothing
-    Just (x,xs) -> first (app $ fromEither $ fmap (Esc . pure) x) <$> stripInfixE needle xs
+    Just (x,xs) -> first (app $ Either.fromEither $ fmap (Esc . pure) x) <$> stripInfixE needle xs
 
 breakE :: (Char -> Bool) -> Esc -> (Esc, Esc)
 breakE f = spanE (not . f)
