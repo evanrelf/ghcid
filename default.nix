@@ -4,11 +4,6 @@ let
       packages = {
         "evans-ghcid" = pkgs.nix-gitignore.gitignoreSource [ ./.nixignore ] ./.;
       };
-      overrides = {
-        "relude" = oldCabal: {
-          patches = (oldCabal.patches or []) ++ [ ./nix/patches/relude.patch ];
-        };
-      };
     };
 
 
