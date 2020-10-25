@@ -6,35 +6,46 @@
 -- | The application entry point
 module Main (main) where
 
-import Control.Exception
-import Data.Tuple.Extra
-import Data.Version
+import Data.Data (Data)
+import Data.Version (Version)
+import Ghcid.Escape (Esc (..))
+import Ghcid.Types
+  ( EvalResult (..)
+  , GhciError (..)
+  , Load (..)
+  , Severity (..)
+  , isMessage
+  )
 import Relude.Extra.Enum (prev)
 import Relude.Extra.Tuple (traverseToSnd)
-import Session
-import System.Console.ANSI
-import System.Console.CmdArgs
-import System.Console.CmdArgs.Explicit
-import System.Environment
+import Session (Session)
+import System.Console.CmdArgs (CmdArgs, Verbosity (..), (&=))
 import System.FilePath ((</>))
-import System.IO.Error
-import System.Info
-import System.Process
-import System.Time.Extra
 
+import qualified Control.Exception as Exception
 import qualified Control.Monad.Extra as Monad
 import qualified Data.List.Extra as List
 import qualified Data.String as String
+import qualified Data.Tuple.Extra as Tuple
+import qualified Data.Version as Version
+import qualified Ghcid.Escape as Escape
+import qualified Ghcid.Util as Util
+import qualified Session
+import qualified System.Console.ANSI as Ansi
+import qualified System.Console.CmdArgs as CmdArgs
+import qualified System.Console.CmdArgs.Explicit as CmdArgs.Explicit
+import qualified System.Console.CmdArgs.Verbosity as Verbosity
 import qualified System.Console.Terminal.Size as Term
 import qualified System.Directory.Extra as Directory
+import qualified System.Environment as Environment
 import qualified System.Exit as Exit
 import qualified System.FilePath as FilePath
+import qualified System.IO.Error as IO.Error
 import qualified System.IO.Extra as IO
-
-import Ghcid.Escape
-import Ghcid.Types
-import Ghcid.Util
-import Wait
+import qualified System.Info
+import qualified System.Process as Process
+import qualified System.Time.Extra as System.Time
+import qualified Wait
 
 -- | Command line options
 data Options = Options
@@ -58,7 +69,7 @@ data Options = Options
   , directory :: FilePath
   , outputfile :: [FilePath]
   , ignoreLoaded :: Bool
-  , poll :: Maybe Seconds
+  , poll :: Maybe System.Time.Seconds
   , max_messages :: Maybe Int
   , color :: ColorMode
   , setup :: [String]
@@ -74,106 +85,106 @@ data ColorMode
   deriving stock (Show, Typeable, Data)
 
 version :: Version
-version = makeVersion [0,0]
+version = Version.makeVersion [0,0]
 
-options :: Mode (CmdArgs Options)
-options = cmdArgsMode $ Options
+options :: CmdArgs.Explicit.Mode (CmdArgs Options)
+options = CmdArgs.cmdArgsMode $ Options
   { command = ""
-      &= name "c"
-      &= typ "COMMAND"
-      &= help "Command to run (defaults to ghci or cabal repl)"
+      &= CmdArgs.name "c"
+      &= CmdArgs.typ "COMMAND"
+      &= CmdArgs.help "Command to run (defaults to ghci or cabal repl)"
   , arguments = []
-      &= args
-      &= typ "MODULE"
+      &= CmdArgs.args
+      &= CmdArgs.typ "MODULE"
   , test = []
-      &= name "T"
-      &= typ "EXPR"
-      &= help "Command to run after successful loading"
+      &= CmdArgs.name "T"
+      &= CmdArgs.typ "EXPR"
+      &= CmdArgs.help "Command to run after successful loading"
   , test_message = "Running test..."
-      &= typ "MESSAGE"
-      &= help "Message to show before running the test (defaults to \"Running test...\")"
+      &= CmdArgs.typ "MESSAGE"
+      &= CmdArgs.help "Message to show before running the test (defaults to \"Running test...\")"
   , run = []
-      &= name "r"
-      &= typ "EXPR"
-      &= opt "main"
-      &= help "Command to run after successful loading (like --test but defaults to main)"
+      &= CmdArgs.name "r"
+      &= CmdArgs.typ "EXPR"
+      &= CmdArgs.opt "main"
+      &= CmdArgs.help "Command to run after successful loading (like --test but defaults to main)"
   , warnings = False
-      &= name "W"
-      &= help "Allow tests to run even with warnings"
+      &= CmdArgs.name "W"
+      &= CmdArgs.help "Allow tests to run even with warnings"
   , lint = Nothing
-      &= typ "COMMAND"
-      &= name "lint"
-      &= opt "hlint"
-      &= help "Linter to run if there are no errors. Defaults to hlint."
+      &= CmdArgs.typ "COMMAND"
+      &= CmdArgs.name "lint"
+      &= CmdArgs.opt "hlint"
+      &= CmdArgs.help "Linter to run if there are no errors. Defaults to hlint."
   , no_status = False
-      &= name "S"
-      &= help "Suppress status messages"
+      &= CmdArgs.name "S"
+      &= CmdArgs.help "Suppress status messages"
   , clear = False
-      &= name "clear"
-      &= help "Clear screen when reloading"
+      &= CmdArgs.name "clear"
+      &= CmdArgs.help "Clear screen when reloading"
   , reverse_errors = False
-      &= help "Reverse output order (works best with --no-height-limit)"
+      &= CmdArgs.help "Reverse output order (works best with --no-height-limit)"
   , no_height_limit = False
-      &= name "no-height-limit"
-      &= help "Disable height limit"
+      &= CmdArgs.name "no-height-limit"
+      &= CmdArgs.help "Disable height limit"
   , height = Nothing
-      &= help "Number of lines to use (defaults to console height)"
+      &= CmdArgs.help "Number of lines to use (defaults to console height)"
   , width = Nothing
-      &= name "w"
-      &= help "Number of columns to use (defaults to console width)"
+      &= CmdArgs.name "w"
+      &= CmdArgs.help "Number of columns to use (defaults to console width)"
   , no_title = False
-      &= help "Don't update the shell title/icon"
+      &= CmdArgs.help "Don't update the shell title/icon"
   , project = ""
-      &= typ "NAME"
-      &= help "Name of the project, defaults to current directory"
+      &= CmdArgs.typ "NAME"
+      &= CmdArgs.help "Name of the project, defaults to current directory"
   , restart = []
-      &= typ "PATH"
-      &= help "Restart the command when the given file or directory contents change (defaults to .ghci and any .cabal file, unless when using stack or a custom command)"
+      &= CmdArgs.typ "PATH"
+      &= CmdArgs.help "Restart the command when the given file or directory contents change (defaults to .ghci and any .cabal file, unless when using stack or a custom command)"
   , reload = []
-      &= typ "PATH"
-      &= help "Reload when the given file or directory contents change (defaults to none)"
+      &= CmdArgs.typ "PATH"
+      &= CmdArgs.help "Reload when the given file or directory contents change (defaults to none)"
   , directory = "."
-      &= typDir
-      &= name "C"
-      &= help "Set the current directory"
+      &= CmdArgs.typDir
+      &= CmdArgs.name "C"
+      &= CmdArgs.help "Set the current directory"
   , outputfile = []
-      &= typFile
-      &= name "o"
-      &= help "File to write the full output to"
+      &= CmdArgs.typFile
+      &= CmdArgs.name "o"
+      &= CmdArgs.help "File to write the full output to"
   , ignoreLoaded = False
-      &= explicit
-      &= name "ignore-loaded"
-      &= help "Keep going if no files are loaded. Requires --reload to be set."
+      &= CmdArgs.explicit
+      &= CmdArgs.name "ignore-loaded"
+      &= CmdArgs.help "Keep going if no files are loaded. Requires --reload to be set."
   , poll = Nothing
-      &= typ "SECONDS"
-      &= opt "0.1"
-      &= explicit
-      &= name "poll"
-      &= help "Use polling every N seconds (defaults to using notifiers)"
+      &= CmdArgs.typ "SECONDS"
+      &= CmdArgs.opt "0.1"
+      &= CmdArgs.explicit
+      &= CmdArgs.name "poll"
+      &= CmdArgs.help "Use polling every N seconds (defaults to using notifiers)"
   , max_messages = Nothing
-      &= name "n"
-      &= help "Maximum number of messages to print"
+      &= CmdArgs.name "n"
+      &= CmdArgs.help "Maximum number of messages to print"
   , color = Auto
-      &= name "colour"
-      &= name "color"
-      &= opt Always
-      &= typ "always/never/auto"
-      &= help "Color output (defaults to when the terminal supports it)"
+      &= CmdArgs.name "colour"
+      &= CmdArgs.name "color"
+      &= CmdArgs.opt Always
+      &= CmdArgs.typ "always/never/auto"
+      &= CmdArgs.help "Color output (defaults to when the terminal supports it)"
   , setup = []
-      &= name "setup"
-      &= typ "COMMAND"
-      &= help "Setup commands to pass to ghci on stdin, usually :set <something>"
+      &= CmdArgs.name "setup"
+      &= CmdArgs.typ "COMMAND"
+      &= CmdArgs.help "Setup commands to pass to ghci on stdin, usually :set <something>"
   , allow_eval = False
-      &= name "allow-eval"
-      &= help "Execute REPL commands in comments"
+      &= CmdArgs.name "allow-eval"
+      &= CmdArgs.help "Execute REPL commands in comments"
   , target = []
-      &= typ "TARGET"
-      &= help "Target Component to build (e.g. lib:foo for Cabal, foo:lib for Stack)"
+      &= CmdArgs.typ "TARGET"
+      &= CmdArgs.help "Target Component to build (e.g. lib:foo for Cabal, foo:lib for Stack)"
   }
-      &= verbosity
+      &= CmdArgs.verbosity
       &=
-  program "ghcid"
-        &= summary ("Auto reloading GHCi daemon v" <> showVersion version)
+  CmdArgs.program "ghcid"
+        &= CmdArgs.summary ("Auto reloading GHCi daemon v" <> Version.showVersion version)
 
 
 {-
@@ -207,7 +218,7 @@ autoOptions o@Options{..}
       files <- Directory.getDirectoryContents "."
 
       -- use unsafePerformIO to get nicer pattern matching for logic (read-only operations)
-      let findStack dir = flip catchIOError (const $ pure Nothing) do
+      let findStack dir = flip IO.Error.catchIOError (const $ pure Nothing) do
               let yaml = dir </> "stack.yaml"
               b <- Directory.doesFileExist yaml &&^ Directory.doesDirectoryExist (dir </> ".stack-work")
               pure $ if b then Just yaml else Nothing
@@ -222,7 +233,7 @@ autoOptions o@Options{..}
             && not allow_eval
             && (isJust stackFile || all isLib target)
             ]
-      let opts = noCode <> ghciFlagsRequired <> ghciFlagsUseful
+      let opts = noCode <> Util.ghciFlagsRequired <> Util.ghciFlagsUseful
       pure $ case () of
           _ | Just stack <- stackFile ->
               let flags = if null arguments then
@@ -252,20 +263,20 @@ withGhcidArgs :: IO a -> IO a
 withGhcidArgs act = do
   b <- Directory.doesFileExist ".ghcid"
   if not b then act else do
-    extra <- concatMap splitArgs . String.lines <$> IO.readFile' ".ghcid"
-    orig <- getArgs
-    withArgs (extra <> orig) act
+    extra <- concatMap CmdArgs.Explicit.splitArgs . String.lines <$> IO.readFile' ".ghcid"
+    orig <- Environment.getArgs
+    Environment.withArgs (extra <> orig) act
 
 
 data TermSize = TermSize
   { termWidth :: Int
   , termHeight :: Maybe Int -- ^ Nothing means the height is unlimited
-  , termWrap :: WordWrap
+  , termWrap :: Escape.WordWrap
   }
 
 -- | On the 'UnexpectedExit' exception exit with a nice error message.
 handleErrors :: IO () -> IO ()
-handleErrors = handle \(UnexpectedExit cmd _ mmsg) -> do
+handleErrors = Exception.handle \(UnexpectedExit cmd _ mmsg) -> do
   putStr $ "Command \"" <> cmd <> "\" exited unexpectedly"
   putStrLn $ case mmsg of
     Just msg -> " with error message: " <> msg
@@ -280,16 +291,16 @@ printStopped opts =
 -- | Like 'main', but run with a fake terminal for testing
 mainWithTerminal :: IO TermSize -> ([String] -> IO ()) -> IO ()
 mainWithTerminal termSize termOutput = do
-  opts <- withGhcidArgs $ cmdArgsRun options
-  whenLoud do
-    outStrLn $ "%OS: " <> os
-    outStrLn $ "%ARCH: " <> arch
-    outStrLn $ "%VERSION: " <> showVersion version
-    args <- getArgs
-    outStrLn $ "%ARGUMENTS: " <> show args
-  flip finally (printStopped opts) $ handleErrors $
-    forever $ withSession \session -> do
-      setVerbosity Normal -- undo any --verbose flags
+  opts <- withGhcidArgs $ CmdArgs.cmdArgsRun options
+  Verbosity.whenLoud do
+    Util.outStrLn $ "%OS: " <> System.Info.os
+    Util.outStrLn $ "%ARCH: " <> System.Info.arch
+    Util.outStrLn $ "%VERSION: " <> Version.showVersion version
+    args <- Environment.getArgs
+    Util.outStrLn $ "%ARGUMENTS: " <> show args
+  flip Exception.finally (printStopped opts) $ handleErrors $
+    forever $ Session.withSession \session -> do
+      Verbosity.setVerbosity Normal -- undo any --verbose flags
 
       -- On certain Cygwin terminals stdout defaults to BlockBuffering
       IO.hSetBuffering stdout IO.LineBuffering
@@ -301,7 +312,7 @@ mainWithTerminal termSize termOutput = do
 
         let noHeight = if no_height_limit opts then const Nothing else id
         termSize <- pure $ case (width opts, height opts) of
-          (Just w, Just h) -> pure $ TermSize w (noHeight $ Just h) WrapHard
+          (Just w, Just h) -> pure $ TermSize w (noHeight $ Just h) Escape.WrapHard
           (w, h) -> do
             term <- termSize
             -- if we write to the final column of the window then it wraps automatically
@@ -309,25 +320,25 @@ mainWithTerminal termSize termOutput = do
             pure $ TermSize
               (fromMaybe (prev $ termWidth term) w)
               (noHeight $ h <|> termHeight term)
-              (if isJust w then WrapHard else termWrap term)
+              (if isJust w then Escape.WrapHard else termWrap term)
 
         restyle <- do
           useStyle <- case color opts of
             Always -> pure True
             Never -> pure False
-            Auto -> hSupportsANSI stdout
+            Auto -> Ansi.hSupportsANSI stdout
           when useStyle do
-            h <- lookupEnv "HSPEC_OPTIONS"
-            when (isNothing h) $ setEnv "HSPEC_OPTIONS" "--color" -- see #87
-          pure $ if useStyle then id else map unescape
+            h <- Environment.lookupEnv "HSPEC_OPTIONS"
+            when (isNothing h) $ Environment.setEnv "HSPEC_OPTIONS" "--color" -- see #87
+          pure $ if useStyle then id else map Escape.unescape
 
         clear <- pure $
           if clear opts
-          then (clearScreen *>)
+          then (Ansi.clearScreen *>)
           else id
 
-        maybe withWaiterNotify withWaiterPoll (poll opts) \waiter ->
-          runGhcid (if allow_eval opts then enableEval session else session) waiter termSize (clear . termOutput . restyle) opts
+        maybe Wait.withWaiterNotify Wait.withWaiterPoll (poll opts) \waiter ->
+          runGhcid (if allow_eval opts then Session.enableEval session else session) waiter termSize (clear . termOutput . restyle) opts
 
 
 
@@ -336,11 +347,11 @@ main = mainWithTerminal termSize termOutput
   where
     termSize =
       Term.size <&> \case
-        Nothing -> TermSize 80 (Just 8) WrapHard
-        Just t -> TermSize (Term.width t) (Just $ Term.height t) WrapSoft
+        Nothing -> TermSize 80 (Just 8) Escape.WrapHard
+        Just t -> TermSize (Term.width t) (Just $ Term.height t) Escape.WrapSoft
 
     termOutput xs = do
-      outStr $ concatMap ('\n':) xs
+      Util.outStr $ concatMap ('\n':) xs
       IO.hFlush stdout -- must flush, since we don't finish with a newline
 
 
@@ -353,7 +364,7 @@ data ReloadMode
 
 -- If we pure successfully, we restart the whole process
 -- Use Continue not () so that inadvertant exits don't restart
-runGhcid :: Session -> Waiter -> IO TermSize -> ([String] -> IO ()) -> Options -> IO Continue
+runGhcid :: Session -> Wait.Waiter -> IO TermSize -> ([String] -> IO ()) -> Options -> IO Continue
 runGhcid session waiter termSize termOutput Options{..} = do
   let limitMessages = maybe id (take . max 1) max_messages
 
@@ -363,22 +374,22 @@ runGhcid session waiter termSize termOutput Options{..} = do
               Nothing -> []
               Just (loadedCount, msgs) -> prettyOutput currTime loadedCount (filter isMessage msgs) evals
         TermSize{..} <- termSize
-        let wrap = concatMap (wordWrapE termWidth (termWidth `div` 5) . Esc)
+        let wrap = concatMap (Escape.wordWrapE termWidth (termWidth `div` 5) . Esc)
         (msg, load, pad) <-
             case termHeight of
                 Nothing -> pure (wrap msg, wrap load, [])
                 Just termHeight -> do
-                    (termHeight, msg) <- pure $ takeRemainder termHeight $ wrap msg
+                    (termHeight, msg) <- pure $ Util.takeRemainder termHeight $ wrap msg
                     (termHeight, load) <-
                         let takeRemainder' =
                                 if reverse_errors
                                 then -- When reversing the errors we want to crop out
                                      -- the top instead of the bottom of the load
-                                     fmap reverse . takeRemainder termHeight . reverse
-                                else takeRemainder termHeight
+                                     fmap reverse . Util.takeRemainder termHeight . reverse
+                                else Util.takeRemainder termHeight
                         in pure $ takeRemainder' $ wrap load
                     pure (msg, load, replicate termHeight "")
-        let mergeSoft ((Esc x,WrapSoft):(Esc y,q):xs) = mergeSoft $ (Esc (x<>y), q) : xs
+        let mergeSoft ((Esc x,Escape.WrapSoft):(Esc y,q):xs) = mergeSoft $ (Esc (x<>y), q) : xs
             mergeSoft ((x,_):xs) = x : mergeSoft xs
             mergeSoft [] = []
 
@@ -386,15 +397,15 @@ runGhcid session waiter termSize termOutput Options{..} = do
                 if reverse_errors
                 then pad <> x
                 else x <> pad
-        termOutput $ applyPadding $ map fromEsc ((if termWrap == WrapSoft then mergeSoft else map fst) $ load <> msg)
+        termOutput $ applyPadding $ map fromEsc ((if termWrap == Escape.WrapSoft then mergeSoft else map fst) $ load <> msg)
 
   when (ignoreLoaded && null reload) do
     putStrLn "--reload must be set when using --ignore-loaded"
     exitFailure
 
-  nextWait0 <- waitFiles waiter
-  (messages, loaded) <- sessionStart session command $
-    map (":set " <>) (ghciFlagsUseful <> ghciFlagsUsefulVersioned) <> setup
+  nextWait0 <- Wait.waitFiles waiter
+  (messages, loaded) <- Session.sessionStart session command $
+    map (":set " <>) (Util.ghciFlagsUseful <> Util.ghciFlagsUsefulVersioned) <> setup
 
   when (null loaded && not ignoreLoaded) do
     putStrLn $ "\nNo files loaded, GHCi is not working properly.\nCommand: " <> command
@@ -411,23 +422,23 @@ runGhcid session waiter termSize termOutput Options{..} = do
       -> ([Load], [FilePath], [FilePath])
       -> IO Continue
     fire nextWait (messages, loaded, touched) = do
-          currTime0 <- getShortTime
+          currTime0 <- Util.getShortTime
           let loadedCount = length loaded
-          whenLoud do
-              outStrLn $ "%MESSAGES: " <> show messages
-              outStrLn $ "%LOADED: " <> show loaded
+          Verbosity.whenLoud do
+              Util.outStrLn $ "%MESSAGES: " <> show messages
+              Util.outStrLn $ "%LOADED: " <> show loaded
 
           let evals = [e | Eval e <- messages]
-          let (countErrors, countWarnings) = both (sum :: [Int] -> Int) $ unzip
+          let (countErrors, countWarnings) = Tuple.both (sum :: [Int] -> Int) $ unzip
                   [if loadSeverity == Error then (1,0) else (0,1) | Message{..} <- messages, loadMessage /= []]
           let hasErrors = countErrors /= 0 || (countWarnings /= 0 && not warnings)
           let test1 =
                   if null test || hasErrors then Nothing
                   else Just $ intercalate "\n" test
 
-          let updateTitle extra = unless no_title $ setTitle $ unescape $
+          let updateTitle extra = unless no_title $ Ansi.setTitle $ Escape.unescape $
                   let f n msg = if n == 0 then "" else show n <> " " <> msg <> ['s' | n > 1]
-                  in (if countErrors == 0 && countWarnings == 0 then allGoodMessage <> ", at " <> currTime0 else f countErrors "error" <>
+                  in (if countErrors == 0 && countWarnings == 0 then Util.allGoodMessage <> ", at " <> currTime0 else f countErrors "error" <>
                      (if countErrors >  0 && countWarnings >  0 then ", " else "") <> f countWarnings "warning") <>
                      " " <> extra <> [' ' | extra /= ""] <> "- " <> project
 
@@ -438,7 +449,7 @@ runGhcid session waiter termSize termOutput Options{..} = do
           ordMessages <- do
               let (msgError, msgWarn) = List.partition ((==) Error . loadSeverity) $ List.nubOrdOn loadMessage $ filter isMessage messages
               -- sort error messages by modtime, so newer edits cause the errors to float to the top - see #153
-              errTimes <- sequence [traverseToSnd getModTime x | x <- List.nubOrd $ map loadFile msgError]
+              errTimes <- sequence [traverseToSnd Util.getModTime x | x <- List.nubOrd $ map loadFile msgError]
               let f x = List.lookup (loadFile x) errTimes
                   moduleSorted = sortOn (Down . f) msgError <> msgWarn
               pure $ (if reverse_errors then reverse else id) moduleSorted
@@ -449,24 +460,24 @@ runGhcid session waiter termSize termOutput Options{..} = do
                   if FilePath.takeExtension file == ".json" then
                       showJSON [("loaded",map jString loaded),("messages",map jMessage $ filter isMessage messages)]
                   else
-                      String.unlines $ map unescape $ prettyOutput currTime0 loadedCount (limitMessages ordMessages) evals
+                      String.unlines $ map Escape.unescape $ prettyOutput currTime0 loadedCount (limitMessages ordMessages) evals
           when (null loaded && not ignoreLoaded) do
               putStrLn "No files loaded, nothing to wait for. Fix the last error and restart."
               exitFailure
           whenJust test1 \t -> do
-              whenLoud $ outStrLn $ "%TESTING: " <> t
-              sessionExecAsync session t \stderr -> do
-                  whenLoud $ outStrLn "%TESTING: Completed"
+              Verbosity.whenLoud $ Util.outStrLn $ "%TESTING: " <> t
+              Session.sessionExecAsync session t \stderr -> do
+                  Verbosity.whenLoud $ Util.outStrLn "%TESTING: Completed"
                   IO.hFlush stdout -- may not have been a terminating newline from test output
                   if "*** Exception: " `isPrefixOf` stderr then do
                       updateTitle "(test failed)"
                    else do
                       updateTitle "(test done)"
-                      whenNormal $ outStrLn "\n...done"
+                      Verbosity.whenNormal $ Util.outStrLn "\n...done"
           whenJust lint \lintcmd ->
               unless hasErrors do
-                  (exitcode, stdout, stderr) <- readCreateProcessWithExitCode (shell . String.unwords $ lintcmd : map escape touched) ""
-                  unless (exitcode == Exit.ExitSuccess) $ outStrLn (stdout <> stderr)
+                  (exitcode, stdout, stderr) <- Process.readCreateProcessWithExitCode (Process.shell . String.unwords $ lintcmd : map escape touched) ""
+                  unless (exitcode == Exit.ExitSuccess) $ Util.outStrLn (stdout <> stderr)
 
           reason <- nextWait $ map (,Restart) restart
                             <> map (,Reload) reload
@@ -482,12 +493,12 @@ runGhcid session waiter termSize termOutput Options{..} = do
                     (_, rs@(_:_)) -> (Restart, map fst rs)
                     (rl, _) -> (Reload, map fst rl)
 
-          currTime <- getShortTime
+          currTime <- Util.getShortTime
           case reason1 of
             (Reload, reason2) -> do
               unless no_status $ outputFill currTime Nothing evals $ "Reloading..." : map ("  " <>) reason2
-              nextWait1 <- waitFiles waiter
-              fire nextWait1 =<< sessionReload session
+              nextWait1 <- Wait.waitFiles waiter
+              fire nextWait1 =<< Session.sessionReload session
             (Restart, reason2) -> do
               -- exit cleanly, since the whole thing is wrapped in a forever
               unless no_status $ outputFill currTime Nothing evals $ "Restarting..." : map ("  " <>) reason2
@@ -499,7 +510,7 @@ runGhcid session waiter termSize termOutput Options{..} = do
 -- | Given an available height, and a set of messages to display, show them as best you can.
 prettyOutput :: String -> Int -> [Load] -> [EvalResult] -> [String]
 prettyOutput currTime loadedCount [] evals =
-  (allGoodMessage <> " (" <> show loadedCount <> " module" <> ['s' | loadedCount /= 1] <> ", at " <> currTime <> ")")
+  (Util.allGoodMessage <> " (" <> show loadedCount <> " module" <> ['s' | loadedCount /= 1] <> ", at " <> currTime <> ")")
     : concatMap printEval evals
 prettyOutput _ _ xs evals = concatMap loadMessage xs <> concatMap printEval evals
 
