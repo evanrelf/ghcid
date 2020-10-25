@@ -1,18 +1,22 @@
-{-# LANGUAGE PatternGuards, ViewPatterns, TupleSections #-}
+{-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE ViewPatterns #-}
 
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 -- | Parses the output from GHCi
-module Ghcid.Parser(
-    parseShowModules, parseShowPaths, parseLoad
-    ) where
-
-import qualified Data.Char as Char
-import qualified Data.List.Extra as List
+module Ghcid.Parser
+  ( parseShowModules
+  , parseShowPaths
+  , parseLoad
+  )
+where
 
 import Ghcid.Types
 import Ghcid.Escape
 
+import qualified Data.Char as Char
+import qualified Data.List.Extra as List
 
 -- | Parse messages from show modules command. Given the parsed lines
 --   return a list of (module name, file).

@@ -1,32 +1,43 @@
 {-# LANGUAGE RecordWildCards #-}
 
 -- | Library for spawning and working with Ghci sessions.
-module Ghcid(
-    Ghci, GhciError(..), Stream(..),
-    Load(..), Severity(..),
-    startGhci, startGhciProcess, stopGhci, interrupt, process,
-    execStream, showModules, showPaths, reload, exec, quit
-    ) where
+module Ghcid
+  ( Ghci
+  , GhciError (..)
+  , Stream (..)
+  , Load (..)
+  , Severity (..)
+  , startGhci
+  , startGhciProcess
+  , stopGhci
+  , interrupt
+  , process
+  , execStream
+  , showModules
+  , showPaths
+  , reload
+  , exec
+  , quit
+  )
+where
 
+import Control.Concurrent.Extra
+import Control.Exception.Extra
+import Data.Unique
 import Relude.Extra.Enum (next)
-import qualified Data.String as String
+import System.Console.CmdArgs.Verbosity
 import System.IO hiding (stdout, stderr)
 import System.IO.Error
 import System.Process
 import System.Time.Extra
-import Control.Concurrent.Extra
-import Control.Exception.Extra
+
 import qualified Data.List.Extra as List
 import qualified Data.Maybe as Maybe
-import Control.Applicative
-import Data.Unique
-
-import System.Console.CmdArgs.Verbosity
+import qualified Data.String as String
 
 import Ghcid.Parser
 import Ghcid.Types as T
 import Ghcid.Util
-import Prelude
 
 
 -- | A GHCi session. Created with 'startGhci', closed with 'stopGhci'.
@@ -35,10 +46,10 @@ import Prelude
 --   or an error will be raised. The only exception is 'interrupt', which aborts
 --   a running computation, or does nothing if no computation is running.
 data Ghci = Ghci
-    {ghciProcess :: ProcessHandle
-    ,ghciInterrupt :: IO ()
-    ,ghciExec :: String -> (Stream -> String -> IO ()) -> IO ()
-    ,ghciUnique :: Unique
+    { ghciProcess :: ProcessHandle
+    , ghciInterrupt :: IO ()
+    , ghciExec :: String -> (Stream -> String -> IO ()) -> IO ()
+    , ghciUnique :: Unique
     }
 
 instance Eq Ghci where

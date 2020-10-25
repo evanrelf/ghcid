@@ -1,22 +1,23 @@
 {-# LANGUAGE CPP #-}
 
 -- | Cross-platform operations for manipulating terminal console windows.
-module Ghcid.Terminal(
-    terminalTopmost,
-    withWindowIcon, WindowIcon(..), setWindowIcon
-    ) where
+module Ghcid.Terminal
+  ( terminalTopmost
+  , withWindowIcon
+  , WindowIcon(..)
+  , setWindowIcon
+  )
+where
 
 #if defined(mingw32_HOST_OS)
-import Data.Word
-import Data.Bits
 import Control.Exception
-
+import Data.Bits
+import Data.Word
+import Graphics.Win32.GDI.Types
+import Graphics.Win32.Message
 import Graphics.Win32.Misc
 import Graphics.Win32.Window
-import Graphics.Win32.Message
-import Graphics.Win32.GDI.Types
 import System.Win32.Types
-
 
 wM_SETICON = 0x0080 :: WindowMessage
 wM_GETICON = 0x007F :: WindowMessage

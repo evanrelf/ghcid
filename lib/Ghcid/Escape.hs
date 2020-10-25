@@ -1,18 +1,26 @@
 {-# LANGUAGE PatternGuards #-}
 
 -- | Module for dealing with escape codes
-module Ghcid.Escape(
-    WordWrap(..),
-    Esc(..), unescape,
-    stripInfixE, stripPrefixE, isPrefixOfE, spanE, trimStartE, unwordsE, unescapeE,
-    wordWrapE
-    ) where
+module Ghcid.Escape
+  ( WordWrap(..)
+  , Esc(..)
+  , unescape
+  , stripInfixE
+  , stripPrefixE
+  , isPrefixOfE
+  , spanE
+  , trimStartE
+  , unwordsE
+  , unescapeE
+  , wordWrapE
+  )
+where
 
-import qualified Data.String as String
-import qualified Data.Char as Char
 import Data.Either.Extra
-import qualified Data.Tuple.Extra as Tuple
 
+import qualified Data.Char as Char
+import qualified Data.String as String
+import qualified Data.Tuple.Extra as Tuple
 
 -- A string with escape characters in it
 newtype Esc = Esc {fromEsc :: String}

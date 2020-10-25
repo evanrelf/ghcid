@@ -3,24 +3,30 @@
 
 -- | Use 'withWaiterPoll' or 'withWaiterNotify' to create a 'Waiter' object,
 --   then access it (single-threaded) by using 'waitFiles'.
-module Wait(Waiter, withWaiterPoll, withWaiterNotify, waitFiles) where
+module Wait
+  ( Waiter
+  , withWaiterPoll
+  , withWaiterNotify
+  , waitFiles
+  )
+where
+
+import Control.Exception.Extra
+import Data.Time.Clock
+import Ghcid.Util
+import System.Console.CmdArgs
+import System.FSNotify
+import System.IO.Error (IOError)
+import System.Time.Extra
 
 import qualified Control.Concurrent.Extra as Concurrent
-import qualified Data.Map as Map
-import qualified Data.Set as Set
 import qualified Control.Monad.Extra as Monad
 import qualified Data.List.Extra as List
-import qualified System.FilePath as FilePath
-import Control.Exception.Extra
-import qualified System.Directory.Extra as Directory
-import Data.Time.Clock
+import qualified Data.Map as Map
+import qualified Data.Set as Set
 import qualified Data.String as String
-import System.Console.CmdArgs
-import System.Time.Extra
-import System.FSNotify
-import Ghcid.Util
-import System.IO.Error (IOError)
-
+import qualified System.Directory.Extra as Directory
+import qualified System.FilePath as FilePath
 
 data Waiter
   = WaiterPoll Seconds

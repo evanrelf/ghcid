@@ -1,32 +1,38 @@
 -- | Utility functions
-module Ghcid.Util(
-    ghciFlagsRequired, ghciFlagsRequiredVersioned,
-    ghciFlagsUseful, ghciFlagsUsefulVersioned,
-    dropPrefixRepeatedly,
-    takeRemainder,
-    outStr, outStrLn,
-    ignored,
-    allGoodMessage,
-    getModTime, getModTimeResolution, getShortTime
-    ) where
+module Ghcid.Util
+  ( ghciFlagsRequired
+  , ghciFlagsRequiredVersioned
+  , ghciFlagsUseful
+  , ghciFlagsUsefulVersioned
+  , dropPrefixRepeatedly
+  , takeRemainder
+  , outStr
+  , outStrLn
+  , ignored
+  , allGoodMessage
+  , getModTime
+  , getModTimeResolution
+  , getShortTime
+  )
+where
 
 import Control.Concurrent.Extra
-import System.Time.Extra
-import System.IO.Unsafe
-import qualified System.IO.Extra as IO
-import System.FilePath
-import System.Info.Extra
-import System.Console.ANSI
-import Data.Version.Extra
+import Control.Exception
 import Data.List.Extra
 import Data.Time.Clock
 import Data.Time.Format
 import Data.Time.LocalTime
-import System.IO.Error
+import Data.Version.Extra
+import System.Console.ANSI
 import System.Directory
-import Control.Exception
-import qualified Control.Monad.Extra as Monad
+import System.FilePath
+import System.IO.Error
+import System.IO.Unsafe
+import System.Info.Extra
+import System.Time.Extra
 
+import qualified Control.Monad.Extra as Monad
+import qualified System.IO.Extra as IO
 
 -- | Flags that are required for ghcid to function and are supported on all GHC versions
 ghciFlagsRequired :: [String]

@@ -4,30 +4,30 @@
 
 -- | A persistent version of the Ghci session, encoding lots of semantics on top.
 --   Not suitable for calling multithreaded.
-module Session(
-    Session, enableEval, withSession,
-    sessionStart, sessionReload,
-    sessionExecAsync,
-    ) where
+module Session
+  ( Session
+  , enableEval
+  , withSession
+  , sessionStart
+  , sessionReload
+  , sessionExecAsync
+  )
+where
 
+import Control.Concurrent.Extra
+import Control.Exception.Extra
 import Ghcid
 import Ghcid.Escape
-import Ghcid.Util
 import Ghcid.Types
--- import Data.IORef
+import Ghcid.Util
 import System.Console.ANSI
-import System.Time.Extra
-import System.Process
 import System.FilePath ((</>))
-import Control.Exception.Extra
-import Control.Concurrent.Extra
--- import Control.Monad.Extra
--- import Data.Maybe
-import qualified Data.List.Extra as List
--- import Control.Applicative
-import qualified System.IO.Extra as IO
-import qualified Data.String as String
+import System.Process
+import System.Time.Extra
 
+import qualified Data.List.Extra as List
+import qualified Data.String as String
+import qualified System.IO.Extra as IO
 
 data Session = Session
     {ghci :: IORef (Maybe Ghci) -- ^ The Ghci session, or Nothing if there is none

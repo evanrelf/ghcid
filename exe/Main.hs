@@ -1,72 +1,71 @@
-{-# LANGUAGE RecordWildCards, DeriveDataTypeable, TupleSections #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE NoOverloadedStrings #-}
-{-# OPTIONS_GHC -fno-cse #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TupleSections #-}
 
 -- | The application entry point
-module Main(main, mainWithTerminal, TermSize(..), WordWrap(..)) where
+module Main (main) where
 
-import Relude.Extra.Enum (prev)
-import Relude.Extra.Tuple (traverseToSnd)
-import qualified Data.String as String
 import Control.Exception
-import System.IO.Error
-import qualified Control.Monad.Extra as Monad
-import qualified Data.List.Extra as List
 import Data.Tuple.Extra
 import Data.Version
+import Relude.Extra.Enum (prev)
+import Relude.Extra.Tuple (traverseToSnd)
 import Session
-import qualified System.Console.Terminal.Size as Term
+import System.Console.ANSI
 import System.Console.CmdArgs
 import System.Console.CmdArgs.Explicit
-import System.Console.ANSI
 import System.Environment
-import qualified System.Directory.Extra as Directory
-import System.Time.Extra
-import qualified System.FilePath as FilePath
-import System.Process
-import System.Info
-import qualified System.IO.Extra as IO
-import qualified System.Exit as Exit
 import System.FilePath ((</>))
+import System.IO.Error
+import System.Info
+import System.Process
+import System.Time.Extra
+
+import qualified Control.Monad.Extra as Monad
+import qualified Data.List.Extra as List
+import qualified Data.String as String
+import qualified System.Console.Terminal.Size as Term
+import qualified System.Directory.Extra as Directory
+import qualified System.Exit as Exit
+import qualified System.FilePath as FilePath
+import qualified System.IO.Extra as IO
 
 import Ghcid.Escape
 import Ghcid.Terminal
-import Ghcid.Util
 import Ghcid.Types
+import Ghcid.Util
 import Wait
-
-import Prelude
-
 
 -- | Command line options
 data Options = Options
-    {command :: String
-    ,arguments :: [String]
-    ,test :: [String]
-    ,test_message :: String
-    ,run :: [String]
-    ,warnings :: Bool
-    ,lint :: Maybe String
-    ,no_status :: Bool
-    ,clear :: Bool
-    ,reverse_errors :: Bool
-    ,no_height_limit :: Bool
-    ,height :: Maybe Int
-    ,width :: Maybe Int
-    ,topmost :: Bool
-    ,no_title :: Bool
-    ,project :: String
-    ,reload :: [FilePath]
-    ,restart :: [FilePath]
-    ,directory :: FilePath
-    ,outputfile :: [FilePath]
-    ,ignoreLoaded :: Bool
-    ,poll :: Maybe Seconds
-    ,max_messages :: Maybe Int
-    ,color :: ColorMode
-    ,setup :: [String]
-    ,allow_eval :: Bool
-    ,target :: [String]
+    { command :: String
+    , arguments :: [String]
+    , test :: [String]
+    , test_message :: String
+    , run :: [String]
+    , warnings :: Bool
+    , lint :: Maybe String
+    , no_status :: Bool
+    , clear :: Bool
+    , reverse_errors :: Bool
+    , no_height_limit :: Bool
+    , height :: Maybe Int
+    , width :: Maybe Int
+    , topmost :: Bool
+    , no_title :: Bool
+    , project :: String
+    , reload :: [FilePath]
+    , restart :: [FilePath]
+    , directory :: FilePath
+    , outputfile :: [FilePath]
+    , ignoreLoaded :: Bool
+    , poll :: Maybe Seconds
+    , max_messages :: Maybe Int
+    , color :: ColorMode
+    , setup :: [String]
+    , allow_eval :: Bool
+    , target :: [String]
     }
     deriving (Data,Typeable,Show)
 
