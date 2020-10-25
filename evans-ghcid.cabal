@@ -76,7 +76,6 @@ executable evans-ghcid
       , ansi-terminal
       , cmdargs       >= 0.10
       , containers
-      , directory     >= 1.2
       , evans-ghcid
       , extra         >= 1.6.20
       , filepath
