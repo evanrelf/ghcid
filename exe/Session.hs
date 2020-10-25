@@ -14,19 +14,19 @@ import Ghcid
 import Ghcid.Escape
 import Ghcid.Util
 import Ghcid.Types
-import Data.IORef
+-- import Data.IORef
 import System.Console.ANSI
 import System.Time.Extra
 import System.Process
-import System.FilePath
+import System.FilePath ((</>))
 import Control.Exception.Extra
 import Control.Concurrent.Extra
-import Control.Monad.Extra
-import Data.Maybe
-import Data.List.Extra
-import Control.Applicative
-import Prelude
-import System.IO.Extra hiding (stdout, stderr)
+-- import Control.Monad.Extra
+-- import Data.Maybe
+import qualified Data.List.Extra as List
+-- import Control.Applicative
+import qualified System.IO.Extra as IO
+import qualified Data.String as String
 
 
 data Session = Session
@@ -61,7 +61,7 @@ withSession f = do
     f Session{..} `finally` do
         debugShutdown "Start finally"
         modifyVar_ running $ const $ pure False
-        whenJustM (readIORef ghci) $ \v -> do
+        whenJustM (readIORef ghci) \v -> do
             writeIORef ghci Nothing
             debugShutdown "Calling kill"
             kill v
@@ -70,8 +70,8 @@ withSession f = do
 
 -- | Kill. Wait just long enough to ensure you've done the job, but not to see the results.
 kill :: Ghci -> IO ()
-kill ghci = ignored $ do
-    void $ timeout 5 $ do
+kill ghci = ignored do
+    void $ timeout 5 do
         debugShutdown "Before quit"
         ignored $ quit ghci
         debugShutdown "After quit"
@@ -84,7 +84,7 @@ kill ghci = ignored $ do
     showCursor
 
 loadedModules :: [Load] -> [FilePath]
-loadedModules = nubOrd . map loadFile . filter (not . isLoadConfig)
+loadedModules = List.nubOrd . map loadFile . filter (not . isLoadConfig)
 
 qualify :: FilePath -> [Load] -> [Load]
 qualify dir xs = [x{loadFile = dir </> loadFile x} | x <- xs]
@@ -97,38 +97,38 @@ sessionStart Session{ ghci = ghciIORef, ..} cmd setup = do
     writeIORef command $ Just (cmd, setup)
 
     -- cleanup any old instances
-    whenJustM (readIORef ghciIORef) $ \v -> do
+    whenJustM (readIORef ghciIORef) \v -> do
         writeIORef ghciIORef Nothing
         void $ forkIO $ kill v
 
     -- start the new
     outStrLn $ "Loading " ++ cmd ++ " ..."
-    (v, messages0) <- mask $ \unmask -> do
+    (v, messages0) <- mask \unmask -> do
         (v, messages) <- unmask $ startGhci cmd Nothing $ const outStrLn
         writeIORef ghciIORef $ Just v
         pure (v, messages)
 
     -- do whatever preparation was requested
-    void $ exec v $ unlines setup
+    void $ exec v $ String.unlines setup
 
     -- deal with current directory
     (dir, _) <- showPaths v
     writeIORef curdir dir
-    messages1 <- pure $ qualify dir messages0
+    let messages1 = qualify dir messages0
 
     let loaded = loadedModules messages1
     evals <- performEvals v allowEval loaded
 
     -- install a handler
-    void $ forkIO $ do
+    void $ forkIO do
         code <- waitForProcess $ process v
-        whenJustM (readIORef ghciIORef) $ \ghci ->
-            when (ghci == v) $ do
+        whenJustM (readIORef ghciIORef) \ghci ->
+            when (ghci == v) do
                 sleep 0.3 -- give anyone reading from the stream a chance to throw first
                 throwTo withThread $ ErrorCall $ "Command \"" ++ cmd ++ "\" exited unexpectedly with " ++ show code
 
     -- handle what the process returned
-    messages2 <- pure $ mapMaybe tidyMessage messages1
+    let messages2 = mapMaybe tidyMessage messages1
     writeIORef warnings $ getWarnings messages2
     pure (messages2 ++ evals, loaded)
 
@@ -148,28 +148,28 @@ performEvals :: Ghci -> Bool -> [FilePath] -> IO [Load]
 performEvals _ False _ = pure []
 performEvals ghci True reloaded = do
     cmds <- mapM getCommands reloaded
-    fmap join $ forM cmds $ \(file, cmds') ->
-        forM cmds' $ \(num, cmd) -> do
+    join <$> forM cmds \(file, cmds') ->
+        forM cmds' \(num, cmd) -> do
             ref <- newIORef []
-            execStream ghci cmd $ \_ resp -> modifyIORef ref (resp :)
-            resp <- unlines . reverse <$> readIORef ref
+            execStream ghci cmd \_ resp -> modifyIORef ref (resp :)
+            resp <- String.unlines . reverse <$> readIORef ref
             pure $ Eval $ EvalResult file (num, 1) cmd resp
 
 
 getCommands :: FilePath -> IO (FilePath, [(Int, String)])
 getCommands fp = do
-    ls <- readFileUTF8' fp
-    pure (fp, splitCommands $ zipFrom 1 $ lines ls)
+    ls <- IO.readFileUTF8' fp
+    pure (fp, splitCommands $ List.zipFrom 1 $ String.lines ls)
 
 splitCommands :: [(Int, String)] -> [(Int, String)]
 splitCommands [] = []
 splitCommands ((num, line) : ls)
     | isCommand line =
-          let (cmds, xs) = span (isCommand . snd) ls
-           in (num, unwords $ fmap (drop $ length commandPrefix) $ line : fmap snd cmds) : splitCommands xs
+          let (cmds, xs) = List.span (isCommand . snd) ls
+           in (num, String.unwords $ fmap (drop $ length commandPrefix) $ line : fmap snd cmds) : splitCommands xs
     | isMultilineCommandPrefix line =
           let (cmds, xs) = break (isMultilineCommandSuffix . snd) ls
-           in (num, unlines (wrapGhciMultiline (fmap snd cmds))) : splitCommands (drop1 xs)
+           in (num, String.unlines (wrapGhciMultiline (fmap snd cmds))) : splitCommands (drop 1 xs)
     | otherwise = splitCommands ls
 
 isCommand :: String -> Bool
@@ -199,7 +199,7 @@ wrapGhciMultiline xs = [":{"] ++ xs ++ [":}"]
 sessionReload :: Session -> IO ([Load], [FilePath], [FilePath])
 sessionReload session@Session{ ghci = ghciIORef, ..} = do
     -- kill anything async, set stuck if you didn't succeed
-    old <- modifyVar running $ \b -> pure (False, b)
+    old <- modifyVar running \b -> pure (False, b)
     stuck <- if not old then pure False else do
         Just ghci <- readIORef ghciIORef
         fmap isNothing $ timeout 5 $ interrupt ghci
@@ -219,10 +219,10 @@ sessionReload session@Session{ ghci = ghciIORef, ..} = do
         -- only keep old warnings from files that are still loaded, but did not reload
         let validWarn w = loadFile w `elem` loaded && loadFile w `notElem` reloaded
         -- newest warnings always go first, so the file you hit save on most recently has warnings first
-        messages <- pure $ messages0 ++ filter validWarn warn
+        let messages = messages0 ++ filter validWarn warn
 
         writeIORef warnings $ getWarnings messages
-        pure (messages ++ evals, nubOrd (loaded ++ reloaded), reloaded)
+        pure (messages ++ evals, List.nubOrd (loaded ++ reloaded), reloaded)
 
 
 -- | Run an exec operation asynchronously. Should not be a @:reload@ or similar.
@@ -234,12 +234,12 @@ sessionExecAsync Session{ ghci = ghciIORef, .. } cmd done = do
     stderrIORef <- newIORef ""
     modifyVar_ running $ const $ pure True
     caller <- myThreadId
-    void $ flip forkFinally (either (throwTo caller) (const $ pure ())) $ do
-        execStream ghci cmd $ \strm msg ->
-            when (msg /= "*** Exception: ExitSuccess") $ do
+    void $ flip forkFinally (either (throwTo caller) (const pass)) do
+        execStream ghci cmd \strm msg ->
+            when (msg /= "*** Exception: ExitSuccess") do
                 when (strm == Stderr) $ writeIORef stderrIORef msg
                 outStrLn msg
-        old <- modifyVar running $ \b -> pure (False, b)
+        old <- modifyVar running \b -> pure (False, b)
         -- don't fire Done if someone interrupted us
         stderr <- readIORef stderrIORef
         when old $ done stderr

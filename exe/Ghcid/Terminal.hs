@@ -44,9 +44,9 @@ terminalTopmost :: IO ()
 terminalTopmost = do
     wnd <- getConsoleWindow
     setWindowPos wnd hWND_TOPMOST 0 0 0 0 (sWP_NOMOVE .|. sWP_NOSIZE)
-    pure ()
+    pass
 #else
-terminalTopmost = pure ()
+terminalTopmost = pass
 #endif
 
 
@@ -65,9 +65,9 @@ setWindowIcon x = do
     -- SMALL is the system tray, BIG is the taskbar and Alt-Tab screen
     sendMessage wnd wM_SETICON iCON_SMALL $ fromIntegral $ castPtrToUINTPtr icon
     sendMessage wnd wM_SETICON iCON_BIG $ fromIntegral $ castPtrToUINTPtr icon
-    pure ()
+    pass
 #else
-setWindowIcon _ = pure ()
+setWindowIcon _ = pass
 #endif
 
 
@@ -81,7 +81,7 @@ withWindowIcon act = do
     act `finally` do
         sendMessage wnd wM_SETICON iCON_BIG icoBig
         sendMessage wnd wM_SETICON iCON_SMALL icoSmall
-        pure ()
+        pass
 #else
 withWindowIcon act = act
 #endif

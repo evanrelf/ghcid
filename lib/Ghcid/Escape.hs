@@ -8,13 +8,10 @@ module Ghcid.Escape(
     wordWrapE
     ) where
 
-import Data.Char
+import qualified Data.String as String
+import qualified Data.Char as Char
 import Data.Either.Extra
-import Data.List.Extra
-import Data.Maybe
-import Data.Tuple.Extra
-import Control.Applicative
-import Prelude
+import qualified Data.Tuple.Extra as Tuple
 
 
 -- A string with escape characters in it
@@ -72,11 +69,11 @@ trimStartE :: Esc -> Esc
 trimStartE e = case unesc e of
     Nothing -> Esc ""
     Just (Left code, rest) -> app code $ trimStartE rest
-    Just (Right c, rest) | isSpace c -> trimStartE rest
+    Just (Right c, rest) | Char.isSpace c -> trimStartE rest
                          | otherwise -> e
 
 unwordsE :: [Esc] -> Esc
-unwordsE = Esc . unwords . map fromEsc
+unwordsE = Esc . String.unwords . map fromEsc
 
 
 repeatedlyE :: (Esc -> (b, Esc)) -> Esc -> [b]
@@ -95,7 +92,7 @@ reverseE :: Esc -> Esc
 reverseE = implode . reverse . explode
 
 breakEndE :: (Char -> Bool) -> Esc -> (Esc, Esc)
-breakEndE f = swap . both reverseE . breakE f . reverseE
+breakEndE f = swap . Tuple.both reverseE . breakE f . reverseE
 
 
 lengthE :: Esc -> Int
@@ -115,5 +112,5 @@ wordWrapE mx gap = repeatedlyE f
         f x =
             let (a,b) = splitAtE mx x in
             if b == Esc "" then ((a, WrapHard), Esc "") else
-                let (a1,a2) = breakEndE isSpace a in
+                let (a1,a2) = breakEndE Char.isSpace a in
                 if lengthE a2 <= gap then ((a1, WrapHard), app a2 b) else ((a, WrapSoft), trimStartE b)

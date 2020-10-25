@@ -5,13 +5,13 @@
 -- | The application entry point
 module Main(main, mainWithTerminal, TermSize(..), WordWrap(..)) where
 
+import Relude.Extra.Enum (prev)
+import Relude.Extra.Tuple (traverseToSnd)
+import qualified Data.String as String
 import Control.Exception
 import System.IO.Error
-import Control.Applicative
-import Control.Monad.Extra
-import Data.List.Extra
-import Data.Maybe
-import Data.Ord
+import qualified Control.Monad.Extra as Monad
+import qualified Data.List.Extra as List
 import Data.Tuple.Extra
 import Data.Version
 import Session
@@ -20,13 +20,14 @@ import System.Console.CmdArgs
 import System.Console.CmdArgs.Explicit
 import System.Console.ANSI
 import System.Environment
-import System.Directory.Extra
+import qualified System.Directory.Extra as Directory
 import System.Time.Extra
-import System.Exit
-import System.FilePath
+import qualified System.FilePath as FilePath
 import System.Process
 import System.Info
-import System.IO.Extra
+import qualified System.IO.Extra as IO
+import qualified System.Exit as Exit
+import System.FilePath ((</>))
 
 import Ghcid.Escape
 import Ghcid.Terminal
@@ -209,17 +210,17 @@ autoOptions :: Options -> IO Options
 autoOptions o@Options{..}
     | command /= "" = pure $ f [command] []
     | otherwise = do
-        curdir <- getCurrentDirectory
-        files <- getDirectoryContents "."
+        curdir <- Directory.getCurrentDirectory
+        files <- Directory.getDirectoryContents "."
 
         -- use unsafePerformIO to get nicer pattern matching for logic (read-only operations)
-        let findStack dir = flip catchIOError (const $ pure Nothing) $ do
+        let findStack dir = flip catchIOError (const $ pure Nothing) do
                 let yaml = dir </> "stack.yaml"
-                b <- doesFileExist yaml &&^ doesDirectoryExist (dir </> ".stack-work")
+                b <- Directory.doesFileExist yaml &&^ Directory.doesDirectoryExist (dir </> ".stack-work")
                 pure $ if b then Just yaml else Nothing
-        stackFile <- firstJustM findStack [".",".."] -- stack file might be parent, see #62
+        stackFile <- Monad.firstJustM findStack [".",".."] -- stack file might be parent, see #62
 
-        let cabal = map (curdir </>) $ filter ((==) ".cabal" . takeExtension) files
+        let cabal = map (curdir </>) $ filter ((==) ".cabal" . FilePath.takeExtension) files
         let isLib = isPrefixOf "lib:"  -- `lib:foo` is the Cabal format
         let noCode = [ "-fno-code"
                      | null test
@@ -243,7 +244,7 @@ autoOptions o@Options{..}
                   in  f (if null arguments then useCabal else useGhci) cabal
               | otherwise -> f ("ghci":opts) []
     where
-        f c r = o{command = unwords $ c ++ map escape arguments, arguments = [], restart = restart ++ r, run = [], test = run ++ test}
+        f c r = o{command = String.unwords $ c ++ map escape arguments, arguments = [], restart = restart ++ r, run = [], test = run ++ test}
 
 -- | Simple escaping for command line arguments. Wraps a string in double quotes if it contains a space.
 escape :: String -> String
@@ -253,9 +254,9 @@ escape x | ' ' `elem` x = "\"" ++ x ++ "\""
 -- | Use arguments from .ghcid if present
 withGhcidArgs :: IO a -> IO a
 withGhcidArgs act = do
-    b <- doesFileExist ".ghcid"
+    b <- Directory.doesFileExist ".ghcid"
     if not b then act else do
-        extra <- concatMap splitArgs . lines <$> readFile' ".ghcid"
+        extra <- concatMap splitArgs . String.lines <$> IO.readFile' ".ghcid"
         orig <- getArgs
         withArgs (extra ++ orig) act
 
@@ -268,7 +269,7 @@ data TermSize = TermSize
 
 -- | On the 'UnexpectedExit' exception exit with a nice error message.
 handleErrors :: IO () -> IO ()
-handleErrors = handle $ \(UnexpectedExit cmd _ mmsg) -> do
+handleErrors = handle \(UnexpectedExit cmd _ mmsg) -> do
     putStr $ "Command \"" ++ cmd ++ "\" exited unexpectedly"
     putStrLn $ case mmsg of
         Just msg -> " with error message: " ++ msg
@@ -277,7 +278,7 @@ handleErrors = handle $ \(UnexpectedExit cmd _ mmsg) -> do
 
 printStopped :: Options -> IO ()
 printStopped opts =
-    forM_ (outputfile opts) $ \file -> do
+    forM_ (outputfile opts) \file -> do
         writeFile file "Ghcid has stopped.\n"
 
 
@@ -285,23 +286,23 @@ printStopped opts =
 mainWithTerminal :: IO TermSize -> ([String] -> IO ()) -> IO ()
 mainWithTerminal termSize termOutput = do
     opts <- withGhcidArgs $ cmdArgsRun options
-    whenLoud $ do
+    whenLoud do
         outStrLn $ "%OS: " ++ os
         outStrLn $ "%ARCH: " ++ arch
         outStrLn $ "%VERSION: " ++ showVersion version
         args <- getArgs
         outStrLn $ "%ARGUMENTS: " ++ show args
     flip finally (printStopped opts) $ handleErrors $
-        forever $ withWindowIcon $ withSession $ \session -> do
+        forever $ withWindowIcon $ withSession \session -> do
             setVerbosity Normal -- undo any --verbose flags
 
             -- On certain Cygwin terminals stdout defaults to BlockBuffering
-            hSetBuffering stdout LineBuffering
-            hSetBuffering stderr NoBuffering
-            origDir <- getCurrentDirectory
-            withCurrentDirectory (directory opts) $ do
+            IO.hSetBuffering stdout IO.LineBuffering
+            IO.hSetBuffering stderr IO.NoBuffering
+            origDir <- Directory.getCurrentDirectory
+            Directory.withCurrentDirectory (directory opts) do
                 opts <- autoOptions opts
-                opts <- pure $ opts{restart = nubOrd $ (origDir </> ".ghcid") : restart opts, reload = nubOrd $ reload opts}
+                opts <- pure $ opts{restart = List.nubOrd $ (origDir </> ".ghcid") : restart opts, reload = List.nubOrd $ reload opts}
                 when (topmost opts) terminalTopmost
 
                 let noHeight = if no_height_limit opts then const Nothing else id
@@ -312,7 +313,7 @@ mainWithTerminal termSize termOutput = do
                         -- if we write to the final column of the window then it wraps automatically
                         -- so putStrLn width 'x' uses up two lines
                         pure $ TermSize
-                            (fromMaybe (pred $ termWidth term) w)
+                            (fromMaybe (prev $ termWidth term) w)
                             (noHeight $ h <|> termHeight term)
                             (if isJust w then WrapHard else termWrap term)
 
@@ -321,7 +322,7 @@ mainWithTerminal termSize termOutput = do
                         Always -> pure True
                         Never -> pure False
                         Auto -> hSupportsANSI stdout
-                    when useStyle $ do
+                    when useStyle do
                         h <- lookupEnv "HSPEC_OPTIONS"
                         when (isNothing h) $ setEnv "HSPEC_OPTIONS" "--color" -- see #87
                     pure $ if useStyle then id else map unescape
@@ -331,7 +332,7 @@ mainWithTerminal termSize termOutput = do
                     then (clearScreen *>)
                     else id
 
-                maybe withWaiterNotify withWaiterPoll (poll opts) $ \waiter ->
+                maybe withWaiterNotify withWaiterPoll (poll opts) \waiter ->
                     runGhcid (if allow_eval opts then enableEval session else session) waiter termSize (clear . termOutput . restyle) opts
 
 
@@ -347,7 +348,7 @@ main = mainWithTerminal termSize termOutput
 
         termOutput xs = do
             outStr $ concatMap ('\n':) xs
-            hFlush stdout -- must flush, since we don't finish with a newline
+            IO.hFlush stdout -- must flush, since we don't finish with a newline
 
 
 data Continue = Continue
@@ -391,7 +392,7 @@ runGhcid session waiter termSize termOutput Options{..} = do
                     else x ++ pad
             termOutput $ applyPadding $ map fromEsc ((if termWrap == WrapSoft then mergeSoft else map fst) $ load ++ msg)
 
-    when (ignoreLoaded && null reload) $ do
+    when (ignoreLoaded && null reload) do
         putStrLn "--reload must be set when using --ignore-loaded"
         exitFailure
 
@@ -399,13 +400,13 @@ runGhcid session waiter termSize termOutput Options{..} = do
     (messages, loaded) <- sessionStart session command $
         map (":set " ++) (ghciFlagsUseful ++ ghciFlagsUsefulVersioned) ++ setup
 
-    when (null loaded && not ignoreLoaded) $ do
+    when (null loaded && not ignoreLoaded) do
         putStrLn $ "\nNo files loaded, GHCi is not working properly.\nCommand: " ++ command
         exitFailure
 
-    restart <- pure $ nubOrd $ restart ++ [x | LoadConfig x <- messages]
+    let restart = List.nubOrd $ restart ++ [x | LoadConfig x <- messages]
 
-    project <- if project /= "" then pure project else takeFileName <$> getCurrentDirectory
+    project <- if project /= "" then pure project else FilePath.takeFileName <$> Directory.getCurrentDirectory
 
     -- fire, given a waiter, the messages/loaded/touched
     let
@@ -416,7 +417,7 @@ runGhcid session waiter termSize termOutput Options{..} = do
       fire nextWait (messages, loaded, touched) = do
             currTime0 <- getShortTime
             let loadedCount = length loaded
-            whenLoud $ do
+            whenLoud do
                 outStrLn $ "%MESSAGES: " ++ show messages
                 outStrLn $ "%LOADED: " ++ show loaded
 
@@ -424,9 +425,9 @@ runGhcid session waiter termSize termOutput Options{..} = do
             let (countErrors, countWarnings) = both sum $ unzip
                     [if loadSeverity == Error then (1,0) else (0,1) | Message{..} <- messages, loadMessage /= []]
             let hasErrors = countErrors /= 0 || (countWarnings /= 0 && not warnings)
-            test1 <- pure $
-                if null test || hasErrors then Nothing
-                else Just $ intercalate "\n" test
+            let test1 =
+                    if null test || hasErrors then Nothing
+                    else Just $ intercalate "\n" test
 
             unless no_title $ setWindowIcon $
                 if countErrors > (0 :: Int) then IconError else if countWarnings > 0 then IconWarning else IconOK
@@ -442,38 +443,38 @@ runGhcid session waiter termSize termOutput Options{..} = do
             -- order and restrict the messages
             -- nubOrdOn loadMessage because module cycles generate the same message at several different locations
             ordMessages <- do
-                let (msgError, msgWarn) = partition ((==) Error . loadSeverity) $ nubOrdOn loadMessage $ filter isMessage messages
+                let (msgError, msgWarn) = List.partition ((==) Error . loadSeverity) $ List.nubOrdOn loadMessage $ filter isMessage messages
                 -- sort error messages by modtime, so newer edits cause the errors to float to the top - see #153
-                errTimes <- sequence [(x,) <$> getModTime x | x <- nubOrd $ map loadFile msgError]
-                let f x = lookup (loadFile x) errTimes
+                errTimes <- sequence [traverseToSnd getModTime x | x <- List.nubOrd $ map loadFile msgError]
+                let f x = List.lookup (loadFile x) errTimes
                     moduleSorted = sortOn (Down . f) msgError ++ msgWarn
                 pure $ (if reverse_errors then reverse else id) moduleSorted
 
             outputFill currTime0 (Just (loadedCount, ordMessages)) evals [test_message | isJust test1]
-            forM_ outputfile $ \file ->
+            forM_ outputfile \file ->
                 writeFile file $
-                    if takeExtension file == ".json" then
+                    if FilePath.takeExtension file == ".json" then
                         showJSON [("loaded",map jString loaded),("messages",map jMessage $ filter isMessage messages)]
                     else
-                        unlines $ map unescape $ prettyOutput currTime0 loadedCount (limitMessages ordMessages) evals
-            when (null loaded && not ignoreLoaded) $ do
+                        String.unlines $ map unescape $ prettyOutput currTime0 loadedCount (limitMessages ordMessages) evals
+            when (null loaded && not ignoreLoaded) do
                 putStrLn "No files loaded, nothing to wait for. Fix the last error and restart."
                 exitFailure
-            whenJust test1 $ \t -> do
+            whenJust test1 \t -> do
                 whenLoud $ outStrLn $ "%TESTING: " ++ t
-                sessionExecAsync session t $ \stderr -> do
+                sessionExecAsync session t \stderr -> do
                     whenLoud $ outStrLn "%TESTING: Completed"
-                    hFlush stdout -- may not have been a terminating newline from test output
+                    IO.hFlush stdout -- may not have been a terminating newline from test output
                     if "*** Exception: " `isPrefixOf` stderr then do
                         updateTitle "(test failed)"
                         setWindowIcon IconError
                      else do
                         updateTitle "(test done)"
                         whenNormal $ outStrLn "\n...done"
-            whenJust lint $ \lintcmd ->
-                unless hasErrors $ do
-                    (exitcode, stdout, stderr) <- readCreateProcessWithExitCode (shell . unwords $ lintcmd : map escape touched) ""
-                    unless (exitcode == ExitSuccess) $ outStrLn (stdout ++ stderr)
+            whenJust lint \lintcmd ->
+                unless hasErrors do
+                    (exitcode, stdout, stderr) <- readCreateProcessWithExitCode (shell . String.unwords $ lintcmd : map escape touched) ""
+                    unless (exitcode == Exit.ExitSuccess) $ outStrLn (stdout ++ stderr)
 
             reason <- nextWait $ map (,Restart) restart
                               ++ map (,Reload) reload
@@ -483,7 +484,7 @@ runGhcid session waiter termSize termOutput Options{..} = do
                   Left err ->
                     (Reload, ["Error when waiting, if this happens repeatedly, raise a ghcid bug.", err])
                   Right files ->
-                    case partition (\(_f, mode') -> mode' == Reload) files of
+                    case List.partition (\(_f, mode') -> mode' == Reload) files of
                       -- Prefer restarts over reloads. E.g., in case of both '--reload=dir'
                       -- and '--restart=dir', ghcid would restart instead of reload.
                       (_, rs@(_:_)) -> (Restart, map fst rs)
@@ -520,20 +521,20 @@ printEval (EvalResult file (line, col) msg result) =
         , ":"
         , show col
         ]
-    ] ++ map ("$> " ++) (lines msg)
-      ++ lines result
+    ] ++ map ("$> " ++) (String.lines msg)
+      ++ String.lines result
 
 
 showJSON :: [(String, [String])] -> String
-showJSON xs = unlines $ concat $
+showJSON xs = String.unlines $ concat $
     [ ((if i == 0 then "{" else ",") ++ jString a ++ ":") :
-      ["  " ++ (if j == 0 then "[" else ",") ++ b | (j,b) <- zipFrom (0 :: Int) bs] ++
+      ["  " ++ (if j == 0 then "[" else ",") ++ b | (j,b) <- List.zipFrom (0 :: Int) bs] ++
       [if null bs then "  []" else "  ]"]
-    | (i,(a,bs)) <- zipFrom (0 :: Int) xs] ++
+    | (i,(a,bs)) <- List.zipFrom (0 :: Int) xs] ++
     [["}"]]
 
 jString :: String -> String
-jString x = "\"" ++ escapeJSON x ++ "\""
+jString x = "\"" ++ List.escapeJSON x ++ "\""
 
 jMessage :: Load -> String
 jMessage Message{..} = jDict $
@@ -543,7 +544,7 @@ jMessage Message{..} = jDict $
     [("end", pair loadFilePosEnd) | loadFilePos /= loadFilePosEnd] ++
     [("message", jString $ intercalate "\n" loadMessage)]
     where pair (a,b) = "[" ++ show a ++ "," ++ show b ++ "]"
-jMessage _ = error "jMessage: Incomplete patterns"
+jMessage _ = error (toText "jMessage: Incomplete patterns")
 
 jDict :: [(String, String)] -> String
 jDict xs = "{" ++ intercalate ", " [jString a ++ ":" ++ b | (a,b) <- xs] ++ "}"

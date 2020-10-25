@@ -11,7 +11,6 @@ module Ghcid.Types(
     ) where
 
 import Data.Data
-import Control.Exception.Base (Exception)
 
 -- | GHCi shut down
 data GhciError = UnexpectedExit

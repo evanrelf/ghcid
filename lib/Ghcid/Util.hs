@@ -1,4 +1,3 @@
-
 -- | Utility functions
 module Ghcid.Util(
     ghciFlagsRequired, ghciFlagsRequiredVersioned,
@@ -14,7 +13,7 @@ module Ghcid.Util(
 import Control.Concurrent.Extra
 import System.Time.Extra
 import System.IO.Unsafe
-import System.IO.Extra
+import qualified System.IO.Extra as IO
 import System.FilePath
 import System.Info.Extra
 import System.Console.ANSI
@@ -26,9 +25,7 @@ import Data.Time.LocalTime
 import System.IO.Error
 import System.Directory
 import Control.Exception
-import Control.Monad.Extra
-import Control.Applicative
-import Prelude
+import qualified Control.Monad.Extra as Monad
 
 
 -- | Flags that are required for ghcid to function and are supported on all GHC versions
@@ -71,7 +68,7 @@ lock = unsafePerformIO newLock
 -- | Output a string with some level of locking
 outStr :: String -> IO ()
 outStr msg = do
-    void $ evaluate $ length $ show msg
+    evaluateWHNF_ $ length msg
     withLock lock $ putStr msg
 
 outStrLn :: String -> IO ()
@@ -111,16 +108,16 @@ getModTimeResolution = pure getModTimeResolutionCache
 {-# NOINLINE getModTimeResolutionCache #-}
 -- Cache the result so only computed once per run
 getModTimeResolutionCache :: Seconds
-getModTimeResolutionCache = unsafePerformIO $ withTempDir $ \dir -> do
+getModTimeResolutionCache = unsafePerformIO $ IO.withTempDir \dir -> do
     let file = dir </> "calibrate.txt"
 
     -- with 10 measurements can get a bit slow, see Shake issue tracker #451
     -- if it rounds to a second then 1st will be a fraction, but 2nd will be full second
     mtime <- do
-      mtime <- fmap maximum $ forM [1..3 :: Int] $ \i -> fmap fst $ duration $ do
+      mtime <- maximum <$> forM [1..3 :: Int] \i -> fst <$> duration do
         writeFile file $ show i
         t1 <- getModificationTime file
-        flip loopM (0 :: Int) $ \j -> do
+        flip Monad.loopM (0 :: Int) \j -> do
             writeFile file $ show (i,j)
             t2 <- getModificationTime file
             pure $ if t1 == t2 then Left $ j+1 else Right ()
