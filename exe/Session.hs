@@ -8,10 +8,10 @@ module Session(
     sessionExecAsync,
     ) where
 
-import Language.Haskell.Ghcid
-import Language.Haskell.Ghcid.Escape
-import Language.Haskell.Ghcid.Util
-import Language.Haskell.Ghcid.Types
+import Ghcid
+import Ghcid.Escape
+import Ghcid.Util
+import Ghcid.Types
 import Data.IORef
 import System.Console.ANSI
 import System.Time.Extra

@@ -18,7 +18,7 @@ import Data.String
 import System.Console.CmdArgs
 import System.Time.Extra
 import System.FSNotify
-import Language.Haskell.Ghcid.Util
+import Ghcid.Util
 
 
 data Waiter

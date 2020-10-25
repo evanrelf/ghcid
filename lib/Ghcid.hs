@@ -1,7 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 
 -- | Library for spawning and working with Ghci sessions.
-module Language.Haskell.Ghcid(
+module Ghcid(
     Ghci, GhciError(..), Stream(..),
     Load(..), Severity(..),
     startGhci, startGhciProcess, stopGhci, interrupt, process,
@@ -24,9 +24,9 @@ import Data.Unique
 
 import System.Console.CmdArgs.Verbosity
 
-import Language.Haskell.Ghcid.Parser
-import Language.Haskell.Ghcid.Types as T
-import Language.Haskell.Ghcid.Util
+import Ghcid.Parser
+import Ghcid.Types as T
+import Ghcid.Util
 import Prelude
 
 

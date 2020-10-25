@@ -1,7 +1,7 @@
 {-# LANGUAGE PatternGuards #-}
 
 -- | Module for dealing with escape codes
-module Language.Haskell.Ghcid.Escape(
+module Ghcid.Escape(
     WordWrap(..),
     Esc(..), unescape,
     stripInfixE, stripPrefixE, isPrefixOfE, spanE, trimStartE, unwordsE, unescapeE,

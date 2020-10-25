@@ -1,6 +1,6 @@
 
 -- | Utility functions
-module Language.Haskell.Ghcid.Util(
+module Ghcid.Util(
     ghciFlagsRequired, ghciFlagsRequiredVersioned,
     ghciFlagsUseful, ghciFlagsUsefulVersioned,
     dropPrefixRepeatedly,

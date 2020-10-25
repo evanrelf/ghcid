@@ -1,7 +1,7 @@
 {-# LANGUAGE PatternGuards, ViewPatterns, TupleSections #-}
 
 -- | Parses the output from GHCi
-module Language.Haskell.Ghcid.Parser(
+module Ghcid.Parser(
     parseShowModules, parseShowPaths, parseLoad
     ) where
 
@@ -14,8 +14,8 @@ import Data.Tuple.Extra
 import Control.Applicative
 import Prelude
 
-import Language.Haskell.Ghcid.Types
-import Language.Haskell.Ghcid.Escape
+import Ghcid.Types
+import Ghcid.Escape
 
 
 -- | Parse messages from show modules command. Given the parsed lines

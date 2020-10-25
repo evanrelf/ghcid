@@ -61,11 +61,11 @@ library
     , process       >= 1.1
     , time          >= 1.5
   exposed-modules:
-    , Language.Haskell.Ghcid
-    , Language.Haskell.Ghcid.Escape
-    , Language.Haskell.Ghcid.Parser
-    , Language.Haskell.Ghcid.Types
-    , Language.Haskell.Ghcid.Util
+    , Ghcid
+    , Ghcid.Escape
+    , Ghcid.Parser
+    , Ghcid.Types
+    , Ghcid.Util
 
 
 executable evans-ghcid
@@ -89,6 +89,6 @@ executable evans-ghcid
     else
         build-depends: unix
     other-modules:
-      , Language.Haskell.Ghcid.Terminal
+      , Ghcid.Terminal
       , Session
       , Wait

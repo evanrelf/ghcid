@@ -27,10 +27,10 @@ import System.Process
 import System.Info
 import System.IO.Extra
 
-import Language.Haskell.Ghcid.Escape
-import Language.Haskell.Ghcid.Terminal
-import Language.Haskell.Ghcid.Util
-import Language.Haskell.Ghcid.Types
+import Ghcid.Escape
+import Ghcid.Terminal
+import Ghcid.Util
+import Ghcid.Types
 import Wait
 
 import Prelude

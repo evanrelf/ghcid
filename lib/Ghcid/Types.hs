@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 
 -- | The types types that we use in Ghcid
-module Language.Haskell.Ghcid.Types(
+module Ghcid.Types(
     GhciError(..),
     Stream(..),
     Load(..), Severity(..), EvalResult(..),
