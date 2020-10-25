@@ -89,11 +89,7 @@ executable evans-ghcid
       , process       >= 1.1
       , terminal-size >= 0.3
       , time          >= 1.5
-    if os(windows)
-        build-depends: Win32
-    else
-        build-depends: unix
+      , unix
     other-modules:
-      , Ghcid.Terminal
       , Session
       , Wait

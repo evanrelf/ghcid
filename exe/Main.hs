@@ -32,7 +32,6 @@ import qualified System.FilePath as FilePath
 import qualified System.IO.Extra as IO
 
 import Ghcid.Escape
-import Ghcid.Terminal
 import Ghcid.Types
 import Ghcid.Util
 import Wait
@@ -52,7 +51,6 @@ data Options = Options
     , no_height_limit :: Bool
     , height :: Maybe Int
     , width :: Maybe Int
-    , topmost :: Bool
     , no_title :: Bool
     , project :: String
     , reload :: [FilePath]
@@ -124,9 +122,6 @@ options = cmdArgsMode $ Options
     , width = Nothing
         &= name "w"
         &= help "Number of columns to use (defaults to console width)"
-    , topmost = False
-        &= name "t"
-        &= help "Set window topmost (Windows only)"
     , no_title = False
         &= help "Don't update the shell title/icon"
     , project = ""
@@ -292,7 +287,7 @@ mainWithTerminal termSize termOutput = do
         args <- getArgs
         outStrLn $ "%ARGUMENTS: " ++ show args
     flip finally (printStopped opts) $ handleErrors $
-        forever $ withWindowIcon $ withSession \session -> do
+        forever $ withSession \session -> do
             setVerbosity Normal -- undo any --verbose flags
 
             -- On certain Cygwin terminals stdout defaults to BlockBuffering
@@ -302,7 +297,6 @@ mainWithTerminal termSize termOutput = do
             Directory.withCurrentDirectory (directory opts) do
                 opts <- autoOptions opts
                 opts <- pure $ opts{restart = List.nubOrd $ (origDir </> ".ghcid") : restart opts, reload = List.nubOrd $ reload opts}
-                when (topmost opts) terminalTopmost
 
                 let noHeight = if no_height_limit opts then const Nothing else id
                 termSize <- pure $ case (width opts, height opts) of
@@ -428,9 +422,6 @@ runGhcid session waiter termSize termOutput Options{..} = do
                     if null test || hasErrors then Nothing
                     else Just $ intercalate "\n" test
 
-            unless no_title $ setWindowIcon $
-                if countErrors > (0 :: Int) then IconError else if countWarnings > 0 then IconWarning else IconOK
-
             let updateTitle extra = unless no_title $ setTitle $ unescape $
                     let f n msg = if n == 0 then "" else show n ++ " " ++ msg ++ ['s' | n > 1]
                     in (if countErrors == 0 && countWarnings == 0 then allGoodMessage ++ ", at " ++ currTime0 else f countErrors "error" ++
@@ -466,7 +457,6 @@ runGhcid session waiter termSize termOutput Options{..} = do
                     IO.hFlush stdout -- may not have been a terminating newline from test output
                     if "*** Exception: " `isPrefixOf` stderr then do
                         updateTitle "(test failed)"
-                        setWindowIcon IconError
                      else do
                         updateTitle "(test done)"
                         whenNormal $ outStrLn "\n...done"
