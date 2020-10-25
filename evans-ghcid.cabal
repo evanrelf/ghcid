@@ -62,7 +62,6 @@ library
     , time          >= 1.5
   exposed-modules:
     , Language.Haskell.Ghcid
-  other-modules:
     , Language.Haskell.Ghcid.Escape
     , Language.Haskell.Ghcid.Parser
     , Language.Haskell.Ghcid.Types
@@ -71,15 +70,14 @@ library
 
 executable evans-ghcid
     import: common, executable
-    hs-source-dirs: lib
-    main-is: Ghcid.hs
-    ghc-options:
-      -main-is Ghcid.main
+    hs-source-dirs: exe
+    main-is: Main.hs
     build-depends:
       , ansi-terminal
       , cmdargs       >= 0.10
       , containers
       , directory     >= 1.2
+      , evans-ghcid
       , extra         >= 1.6.20
       , filepath
       , fsnotify
@@ -91,11 +89,6 @@ executable evans-ghcid
     else
         build-depends: unix
     other-modules:
-      , Language.Haskell.Ghcid
-      , Language.Haskell.Ghcid.Escape
-      , Language.Haskell.Ghcid.Parser
       , Language.Haskell.Ghcid.Terminal
-      , Language.Haskell.Ghcid.Types
-      , Language.Haskell.Ghcid.Util
       , Session
       , Wait
