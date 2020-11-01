@@ -67,11 +67,13 @@ executable evans-ghcid
     , extra         >= 1.6.20
     , filepath
     , fsnotify
+    , optparse-applicative
     , process       >= 1.1
     , terminal-size >= 0.3
     , time          >= 1.5
     , unix
   other-modules:
+    , CliOptions
     , Ghcid
     , Ghcid.Escape
     , Ghcid.Parser

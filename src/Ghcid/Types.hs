@@ -1,5 +1,3 @@
-{-# LANGUAGE DeriveDataTypeable #-}
-
 {-# OPTIONS_GHC -Wno-partial-fields #-}
 
 -- | The types types that we use in Ghcid

@@ -6,7 +6,7 @@
 -- | The application entry point
 module Main (main) where
 
-import Data.Data (Data)
+import CliOptions (CliOptions (..), ColorMode (..))
 import Data.Version (Version)
 import Ghcid.Escape (Esc (..))
 import Ghcid.Types
@@ -19,9 +19,10 @@ import Ghcid.Types
 import Relude.Extra.Enum (prev)
 import Relude.Extra.Tuple (traverseToSnd)
 import Session (Session)
-import System.Console.CmdArgs (CmdArgs, Verbosity (..), (&=))
+import System.Console.CmdArgs (Verbosity (..))
 import System.FilePath ((</>))
 
+import qualified CliOptions
 import qualified Control.Exception as Exception
 import qualified Control.Monad.Extra as Monad.Extra
 import qualified Data.List as List
@@ -33,8 +34,6 @@ import qualified Ghcid.Escape as Escape
 import qualified Ghcid.Util as Util
 import qualified Session
 import qualified System.Console.ANSI as Ansi
-import qualified System.Console.CmdArgs as CmdArgs
-import qualified System.Console.CmdArgs.Explicit as CmdArgs.Explicit
 import qualified System.Console.CmdArgs.Verbosity as Verbosity
 import qualified System.Console.Terminal.Size as Term
 import qualified System.Directory as Directory
@@ -43,151 +42,12 @@ import qualified System.Exit as Exit
 import qualified System.FilePath as FilePath
 import qualified System.IO as IO
 import qualified System.IO.Error as IO.Error
-import qualified System.IO.Extra as IO.Extra
 import qualified System.Info
 import qualified System.Process as Process
-import qualified System.Time.Extra as System.Time
 import qualified Wait
-
--- | Command line options
-data Options = Options
-  { command :: String
-  , arguments :: [String]
-  , test :: [String]
-  , test_message :: String
-  , run :: [String]
-  , warnings :: Bool
-  , lint :: Maybe String
-  , no_status :: Bool
-  , clear :: Bool
-  , reverse_errors :: Bool
-  , no_height_limit :: Bool
-  , height :: Maybe Int
-  , width :: Maybe Int
-  , no_title :: Bool
-  , project :: String
-  , reload :: [FilePath]
-  , restart :: [FilePath]
-  , directory :: FilePath
-  , outputfile :: [FilePath]
-  , ignoreLoaded :: Bool
-  , poll :: Maybe System.Time.Seconds
-  , max_messages :: Maybe Int
-  , color :: ColorMode
-  , setup :: [String]
-  , allow_eval :: Bool
-  , target :: [String]
-  } deriving stock (Data, Typeable, Show)
-
--- | When to colour terminal output.
-data ColorMode
-  = Never  -- ^ Terminal output will never be coloured.
-  | Always -- ^ Terminal output will always be coloured.
-  | Auto   -- ^ Terminal output will be coloured if $TERM and stdout appear to support it.
-  deriving stock (Show, Typeable, Data)
 
 version :: Version
 version = Version.makeVersion [0,0]
-
-options :: CmdArgs.Explicit.Mode (CmdArgs Options)
-options = CmdArgs.cmdArgsMode $ Options
-  { command = ""
-      &= CmdArgs.name "c"
-      &= CmdArgs.typ "COMMAND"
-      &= CmdArgs.help "Command to run (defaults to ghci or cabal repl)"
-  , arguments = []
-      &= CmdArgs.args
-      &= CmdArgs.typ "MODULE"
-  , test = []
-      &= CmdArgs.name "T"
-      &= CmdArgs.typ "EXPR"
-      &= CmdArgs.help "Command to run after successful loading"
-  , test_message = "Running test..."
-      &= CmdArgs.typ "MESSAGE"
-      &= CmdArgs.help "Message to show before running the test (defaults to \"Running test...\")"
-  , run = []
-      &= CmdArgs.name "r"
-      &= CmdArgs.typ "EXPR"
-      &= CmdArgs.opt "main"
-      &= CmdArgs.help "Command to run after successful loading (like --test but defaults to main)"
-  , warnings = False
-      &= CmdArgs.name "W"
-      &= CmdArgs.help "Allow tests to run even with warnings"
-  , lint = Nothing
-      &= CmdArgs.typ "COMMAND"
-      &= CmdArgs.name "lint"
-      &= CmdArgs.opt "hlint"
-      &= CmdArgs.help "Linter to run if there are no errors. Defaults to hlint."
-  , no_status = False
-      &= CmdArgs.name "S"
-      &= CmdArgs.help "Suppress status messages"
-  , clear = False
-      &= CmdArgs.name "clear"
-      &= CmdArgs.help "Clear screen when reloading"
-  , reverse_errors = False
-      &= CmdArgs.help "Reverse output order (works best with --no-height-limit)"
-  , no_height_limit = False
-      &= CmdArgs.name "no-height-limit"
-      &= CmdArgs.help "Disable height limit"
-  , height = Nothing
-      &= CmdArgs.help "Number of lines to use (defaults to console height)"
-  , width = Nothing
-      &= CmdArgs.name "w"
-      &= CmdArgs.help "Number of columns to use (defaults to console width)"
-  , no_title = False
-      &= CmdArgs.help "Don't update the shell title/icon"
-  , project = ""
-      &= CmdArgs.typ "NAME"
-      &= CmdArgs.help "Name of the project, defaults to current directory"
-  , restart = []
-      &= CmdArgs.typ "PATH"
-      &= CmdArgs.help "Restart the command when the given file or directory contents change (defaults to .ghci and any .cabal file, unless when using stack or a custom command)"
-  , reload = []
-      &= CmdArgs.typ "PATH"
-      &= CmdArgs.help "Reload when the given file or directory contents change (defaults to none)"
-  , directory = "."
-      &= CmdArgs.typDir
-      &= CmdArgs.name "C"
-      &= CmdArgs.help "Set the current directory"
-  , outputfile = []
-      &= CmdArgs.typFile
-      &= CmdArgs.name "o"
-      &= CmdArgs.help "File to write the full output to"
-  , ignoreLoaded = False
-      &= CmdArgs.explicit
-      &= CmdArgs.name "ignore-loaded"
-      &= CmdArgs.help "Keep going if no files are loaded. Requires --reload to be set."
-  , poll = Nothing
-      &= CmdArgs.typ "SECONDS"
-      &= CmdArgs.opt "0.1"
-      &= CmdArgs.explicit
-      &= CmdArgs.name "poll"
-      &= CmdArgs.help "Use polling every N seconds (defaults to using notifiers)"
-  , max_messages = Nothing
-      &= CmdArgs.name "n"
-      &= CmdArgs.help "Maximum number of messages to print"
-  , color = Auto
-      &= CmdArgs.name "colour"
-      &= CmdArgs.name "color"
-      &= CmdArgs.opt Always
-      &= CmdArgs.typ "always/never/auto"
-      &= CmdArgs.help "Color output (defaults to when the terminal supports it)"
-  , setup = []
-      &= CmdArgs.name "setup"
-      &= CmdArgs.typ "COMMAND"
-      &= CmdArgs.help "Setup commands to pass to ghci on stdin, usually :set <something>"
-  , allow_eval = False
-      &= CmdArgs.name "allow-eval"
-      &= CmdArgs.help "Execute REPL commands in comments"
-  , target = []
-      &= CmdArgs.typ "TARGET"
-      &= CmdArgs.help "Target Component to build (e.g. lib:foo for Cabal, foo:lib for Stack)"
-  }
-      &= CmdArgs.verbosity
-      &=
-  CmdArgs.program "ghcid"
-        &= CmdArgs.summary ("Auto reloading GHCi daemon v" <> Version.showVersion version)
-
 
 {-
 What happens on various command lines:
@@ -212,8 +72,8 @@ Warnings:
 
 As a result, we prefer to give users full control with a .ghci file, if available
 -}
-autoOptions :: Options -> IO Options
-autoOptions o@Options{..}
+autoOptions :: CliOptions -> IO CliOptions
+autoOptions o@CliOptions{..}
   | command /= "" = pure $ f [command] []
   | otherwise = do
       curdir <- Directory.getCurrentDirectory
@@ -231,7 +91,6 @@ autoOptions o@Options{..}
       let noCode =
             [ "-fno-code"
             |  null test
-            && null run
             && not allow_eval
             && (isJust stackFile || all isLib target)
             ]
@@ -252,7 +111,7 @@ autoOptions o@Options{..}
                 in  f (if null arguments then useCabal else useGhci) cabal
             | otherwise -> f ("ghci":opts) []
   where
-    f c r = o{command = String.unwords $ c <> map escape arguments, arguments = [], restart = restart <> r, run = [], test = run <> test}
+    f c r = o{command = String.unwords $ c <> map escape arguments, arguments = [], restart = restart <> r, test = [] <> test}
 
 -- | Simple escaping for command line arguments. Wraps a string in double quotes if it contains a space.
 escape :: String -> String
@@ -262,14 +121,18 @@ escape x
 
 -- | Use arguments from .ghcid if present
 withGhcidArgs :: IO a -> IO a
-withGhcidArgs act = do
-  b <- Directory.doesFileExist ".ghcid"
-  if not b then act else do
-    extra <- concatMap CmdArgs.Explicit.splitArgs . String.lines <$> IO.Extra.readFile' ".ghcid"
-    orig <- Environment.getArgs
-    Environment.withArgs (extra <> orig) act
+withGhcidArgs action = do
+  exists <- Directory.doesFileExist ".ghcid"
 
+  if exists then do
+    fileContents <- readFileText ".ghcid"
+    let extraArguments = toString <$> concatMap words (lines fileContents)
+    originalArguments <- fmap toString <$> Environment.getArgs
+    Environment.withArgs (extraArguments <> originalArguments) action
 
+  else
+    action
+  
 data TermSize = TermSize
   { termWidth :: Int
   , termHeight :: Maybe Int -- ^ Nothing means the height is unlimited
@@ -285,7 +148,7 @@ handleErrors = Exception.handle \(UnexpectedExit cmd _ mmsg) -> do
     Nothing -> ""
   exitFailure
 
-printStopped :: Options -> IO ()
+printStopped :: CliOptions -> IO ()
 printStopped opts =
   forM_ (outputfile opts) \file -> writeFile file "Ghcid has stopped.\n"
 
@@ -293,7 +156,7 @@ printStopped opts =
 -- | Like 'main', but run with a fake terminal for testing
 mainWithTerminal :: IO TermSize -> ([String] -> IO ()) -> IO ()
 mainWithTerminal termSize termOutput = do
-  opts <- withGhcidArgs $ CmdArgs.cmdArgsRun options
+  opts <- withGhcidArgs CliOptions.getCliOptions
   Verbosity.whenLoud do
     Util.outStrLn $ "%OS: " <> System.Info.os
     Util.outStrLn $ "%ARCH: " <> System.Info.arch
@@ -365,8 +228,8 @@ data ReloadMode
 
 -- If we pure successfully, we restart the whole process
 -- Use Continue not () so that inadvertant exits don't restart
-runGhcid :: Session -> Wait.Waiter -> IO TermSize -> ([String] -> IO ()) -> Options -> IO Continue
-runGhcid session waiter termSize termOutput Options{..} = do
+runGhcid :: Session -> Wait.Waiter -> IO TermSize -> ([String] -> IO ()) -> CliOptions -> IO Continue
+runGhcid session waiter termSize termOutput CliOptions{..} = do
   let limitMessages = maybe id (take . max 1) max_messages
 
   let outputFill :: String -> Maybe (Int, [Load]) -> [EvalResult] -> [String] -> IO ()
