@@ -31,9 +31,13 @@ import Ghcid.Types
   )
 import Relude.Extra.Enum (next)
 
-import qualified Control.Concurrent.Extra as Concurrent
-import qualified Control.Exception.Extra as Exception
-import qualified Data.List.Extra as List
+import qualified Control.Concurrent as Concurrent
+import qualified Control.Concurrent.Extra as Concurrent.Extra
+import qualified Control.Exception as Exception
+import qualified Control.Exception.Extra as Exception.Extra
+import qualified Data.Char as Char
+import qualified Data.List as List
+import qualified Data.List.Extra as List.Extra
 import qualified Data.Maybe as Maybe
 import qualified Data.String as String
 import qualified Data.Unique as Unique
@@ -126,9 +130,9 @@ startGhciProcess procConfig0 echo0 = do
         -- At various points I need to ensure everything the user is waiting for
         -- has completed So I send messages on stdout/stderr and wait for them to
         -- arrive
-        syncCount <- Concurrent.newVar (0 :: Int)
+        syncCount <- Concurrent.Extra.newVar (0 :: Int)
         let syncReplay = do
-                i <- Concurrent.readVar syncCount
+                i <- Concurrent.Extra.readVar syncCount
                 -- useful to avoid overloaded strings by showing the
                 -- ['a','b','c'] form, see #109
                 let showStr xs = "[" <> intercalate "," (map show xs) <> "]"
@@ -139,7 +143,7 @@ startGhciProcess procConfig0 echo0 = do
                            "INTERNAL_GHCID.hPutStrLn INTERNAL_GHCID.stderr " <> showStr msg
                 pure $ List.isInfixOf msg
         let syncFresh = do
-                Concurrent.modifyVar_ syncCount $ pure . next
+                Concurrent.Extra.modifyVar_ syncCount $ pure . next
                 syncReplay
 
         -- Consume from a stream until EOF (pure Nothing) or some predicate
@@ -148,11 +152,11 @@ startGhciProcess procConfig0 echo0 = do
             consume name finish = do
                 let h = if name == Stdout then out else err
                 flip fix Nothing \rec oldMsg -> do
-                    el <- Exception.tryBool IO.Error.isEOFError $ IO.hGetLine h
+                    el <- Exception.Extra.tryBool IO.Error.isEOFError $ IO.hGetLine h
                     case el of
                         Left _ -> pure $ Left oldMsg
                         Right l -> do
-                            Verbosity.whenLoud $ Util.outStrLn $ "%" <> List.upper (show name) <> ": " <> l
+                            Verbosity.whenLoud $ Util.outStrLn $ "%" <> fmap Char.toUpper (show name) <> ": " <> l
                             let msg = removePrefix l
                             res <- finish msg
                             case res of
@@ -163,8 +167,8 @@ startGhciProcess procConfig0 echo0 = do
             consume2 msg finish = do
                 -- fetch the operations in different threads as hGetLine may block
                 -- and can't be aborted by async exceptions, see #154
-                res1Action <- Concurrent.onceFork $ consume Stdout (finish Stdout)
-                res2Action <- Concurrent.onceFork $ consume Stderr (finish Stderr)
+                res1Action <- Concurrent.Extra.onceFork $ consume Stdout (finish Stdout)
+                res2Action <- Concurrent.Extra.onceFork $ consume Stderr (finish Stderr)
                 res1 <- res1Action
                 res2 <- res2Action
                 let raise msg' err' = Exception.throwIO $ case Process.cmdspec procConfig of
@@ -180,15 +184,15 @@ startGhciProcess procConfig0 echo0 = do
         -- held while interrupting, and briefly held when starting an exec
         -- ensures exec values queue up behind an ongoing interrupt and no two
         -- interrupts run at once
-        isInterrupting <- Concurrent.newLock
+        isInterrupting <- Concurrent.Extra.newLock
 
         -- is anyone running running an exec statement, ensure only one person
         -- talks to ghci at a time
-        isRunning <- Concurrent.newLock
+        isRunning <- Concurrent.Extra.newLock
 
         let ghciExec command echo = do
-                Concurrent.withLock isInterrupting pass
-                res <- Concurrent.withLockTry isRunning do
+                Concurrent.Extra.withLock isInterrupting pass
+                res <- Concurrent.Extra.withLockTry isRunning do
                     writeInp command
                     stop <- syncFresh
                     void $ consume2 command \strm s ->
@@ -200,8 +204,8 @@ startGhciProcess procConfig0 echo0 = do
                 whenNothing res $
                     fail "Ghcid.exec, computation is already running, must be used single-threaded"
 
-        let ghciInterrupt = Concurrent.withLock isInterrupting $
-                whenNothingM (Concurrent.withLockTry isRunning pass) do
+        let ghciInterrupt = Concurrent.Extra.withLock isInterrupting $
+                whenNothingM (Concurrent.Extra.withLockTry isRunning pass) do
                     Verbosity.whenLoud $ Util.outStrLn "%INTERRUPT"
                     Process.interruptProcessGroupOf ghciProcess
                     -- let the person running ghciExec finish, since their sync
@@ -209,7 +213,7 @@ startGhciProcess procConfig0 echo0 = do
                     void syncReplay
                     -- now wait for the person doing ghciExec to have actually
                     -- left the lock
-                    Concurrent.withLock isRunning pass
+                    Concurrent.Extra.withLock isRunning pass
                     -- there may have been two syncs sent, so now do a fresh sync
                     -- to clear everything
                     stop <- syncFresh
@@ -230,7 +234,7 @@ startGhciProcess procConfig0 echo0 = do
             else do
                 -- there may be some initial prompts on stdout before I set the
                 -- prompt properly
-                let s = maybe s0 (removePrefix . snd) $ List.stripInfix ghcid_prefix s0
+                let s = maybe s0 (removePrefix . snd) $ List.Extra.stripInfix ghcid_prefix s0
                 Verbosity.whenLoud $ Util.outStrLn $ "%STDOUT2: " <> s
                 modifyIORef (if strm == Stdout then stdout else stderr) (s:)
                 when (any (`isPrefixOf` s) [ "GHCi, version "

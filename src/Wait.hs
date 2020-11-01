@@ -14,10 +14,10 @@ where
 import Data.Time.Clock (UTCTime, getCurrentTime)
 import System.IO.Error (IOError)
 
-import qualified Control.Concurrent.Extra as Concurrent
+import qualified Control.Concurrent.Extra as Concurrent.Extra
 import qualified Control.Exception as Exception
-import qualified Control.Monad.Extra as Monad
-import qualified Data.List.Extra as List
+import qualified Control.Monad.Extra as Monad.Extra
+import qualified Data.List.Extra as List.Extra
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.String as String
@@ -30,7 +30,7 @@ import qualified System.Time.Extra as System.Time
 
 data Waiter
   = WaiterPoll System.Time.Seconds
-  | WaiterNotify FsNotify.WatchManager (MVar ()) (Concurrent.Var (Map.Map FilePath FsNotify.StopListening))
+  | WaiterNotify FsNotify.WatchManager (MVar ()) (Concurrent.Extra.Var (Map.Map FilePath FsNotify.StopListening))
 
 withWaiterPoll :: System.Time.Seconds -> (Waiter -> IO a) -> IO a
 withWaiterPoll x f = f $ WaiterPoll x
@@ -38,7 +38,7 @@ withWaiterPoll x f = f $ WaiterPoll x
 withWaiterNotify :: (Waiter -> IO a) -> IO a
 withWaiterNotify f = FsNotify.withManagerConf FsNotify.defaultConfig{FsNotify.confDebounce = FsNotify.NoDebounce} \manager -> do
   mvar <- newEmptyMVar
-  var <- Concurrent.newVar Map.empty
+  var <- Concurrent.Extra.newVar Map.empty
   f $ WaiterNotify manager mvar var
 
 -- `listContentsInside test dir` will list files and directories inside `dir`,
@@ -47,9 +47,9 @@ withWaiterNotify f = FsNotify.withManagerConf FsNotify.defaultConfig{FsNotify.co
 -- Subdirectories will have a trailing path separator, and are only listed if we recurse into them.
 listContentsInside :: (FilePath -> IO Bool) -> FilePath -> IO [FilePath]
 listContentsInside test dir = do
-  (dirs,files) <- Monad.partitionM Directory.doesDirectoryExist =<< Directory.listContents dir
+  (dirs,files) <- Monad.Extra.partitionM Directory.doesDirectoryExist =<< Directory.listContents dir
   recurse <- filterM test dirs
-  rest <- Monad.concatMapM (listContentsInside test) recurse
+  rest <- Monad.Extra.concatMapM (listContentsInside test) recurse
   pure $ FilePath.addTrailingPathSeparator dir : files <> rest
 
 -- | Given the pattern:
@@ -75,13 +75,13 @@ waitFiles waiter = do
     Verbosity.whenLoud $ Util.outStrLn $ "%WAITING: " <> String.unwords (map fst files)
     -- As listContentsInside pures directories, we are waiting on them explicitly and so
     -- will pick up new files, as creating a new file changes the containing directory's modtime.
-    files <- Monad.concatForM files \(file, a) ->
+    files <- Monad.Extra.concatForM files \(file, a) ->
       ifM (Directory.doesDirectoryExist file) (fmap (,a) <$> listContentsInside (pure . not . isPrefixOf "." . FilePath.takeFileName) file) (pure [(file, a)])
     case waiter of
       WaiterPoll _t -> pass
       WaiterNotify manager kick mp -> do
-        dirs <- fmap Set.fromList $ mapM canonicalizePathSafe $ List.nubOrd $ map (FilePath.takeDirectory . fst) files
-        Concurrent.modifyVar_ mp \mp -> do
+        dirs <- fmap Set.fromList $ mapM canonicalizePathSafe $ List.Extra.nubOrd $ map (FilePath.takeDirectory . fst) files
+        Concurrent.Extra.modifyVar_ mp \mp -> do
           let (keep,del) = Map.partitionWithKey (\k _v -> k `Set.member` dirs) mp
           sequence_ $ Map.elems del
           new <- forM (Set.toList $ dirs `Set.difference` Map.keysSet keep) \dir -> do
@@ -115,9 +115,9 @@ waitFiles waiter = do
           -- if someone is deleting a needed file, give them some space to put the file back
           -- typically caused by VIM
           -- but try not to
-          Verbosity.whenLoud $ Util.outStrLn $ "%WAITING: Waiting max of 1s due to file removal, " <> String.unwords (List.nubOrd (map fst disappeared))
+          Verbosity.whenLoud $ Util.outStrLn $ "%WAITING: Waiting max of 1s due to file removal, " <> String.unwords (List.Extra.nubOrd (map fst disappeared))
           -- at most 20 iterations, but stop as soon as the file pures
-          void $ flip Monad.firstJustM (replicate 20 ()) \_ -> do
+          void $ flip Monad.Extra.firstJustM (replicate 20 ()) \_ -> do
             System.Time.sleep 0.05
             new <- mapM (Util.getModTime . fst) files
             pure $ if null [x | (x, Just _, Nothing) <- zip3 files old new] then Just () else Nothing

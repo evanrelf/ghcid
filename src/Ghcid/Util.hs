@@ -16,21 +16,16 @@ module Ghcid.Util
 where
 
 import Data.Time.Clock (UTCTime)
-import System.FilePath ((</>))
 
-import qualified Control.Concurrent.Extra as Concurrent
+import qualified Control.Concurrent as Concurrent
+import qualified Control.Concurrent.Extra as Concurrent.Extra
 import qualified Control.Exception as Exception
-import qualified Control.Monad.Extra as Monad
 import qualified Data.List as List
 import qualified Data.Time as Time
-import qualified Data.Version as Version
 import qualified System.Console.ANSI as Ansi
 import qualified System.Directory as Directory
 import qualified System.IO.Error as IO.Error
-import qualified System.IO.Extra as IO
 import qualified System.IO.Unsafe as IO.Unsafe
-import qualified System.Info
-import qualified System.Time.Extra as System.Time
 
 -- | Flags that are required for ghcid to function and are supported on all GHC
 --   versions
@@ -70,14 +65,14 @@ dropPrefixRepeatedly prefix xs =
 
 
 {-# NOINLINE lock #-}
-lock :: Concurrent.Lock
-lock = IO.Unsafe.unsafePerformIO Concurrent.newLock
+lock :: Concurrent.Extra.Lock
+lock = IO.Unsafe.unsafePerformIO Concurrent.Extra.newLock
 
 -- | Output a string with some level of locking
 outStr :: String -> IO ()
 outStr msg = do
   evaluateWHNF_ $ length msg
-  Concurrent.withLock lock $ putStr msg
+  Concurrent.Extra.withLock lock $ putStr msg
 
 outStrLn :: String -> IO ()
 outStrLn xs = outStr $ xs <> "\n"
@@ -85,9 +80,9 @@ outStrLn xs = outStr $ xs <> "\n"
 -- | Ignore all exceptions coming from an action
 ignored :: IO () -> IO ()
 ignored action = do
-  barrier <- Concurrent.newBarrier
-  void $ Concurrent.forkFinally action \_ -> Concurrent.signalBarrier barrier ()
-  Concurrent.waitBarrier barrier
+  barrier <- Concurrent.Extra.newBarrier
+  void $ Concurrent.forkFinally action \_ -> Concurrent.Extra.signalBarrier barrier ()
+  Concurrent.Extra.waitBarrier barrier
 
 -- | The message to show when no errors have been reported
 allGoodMessage :: String

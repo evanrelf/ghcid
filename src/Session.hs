@@ -35,14 +35,16 @@ import Ghcid.Types
   )
 import System.FilePath ((</>))
 
-import qualified Control.Concurrent.Extra as Concurrent
+import qualified Control.Concurrent as Concurrent
+import qualified Control.Concurrent.Extra as Concurrent.Extra
 import qualified Control.Exception as Exception
-import qualified Data.List.Extra as List
+import qualified Data.List as List
+import qualified Data.List.Extra as List.Extra
 import qualified Data.String as String
 import qualified Ghcid.Escape as Escape
 import qualified Ghcid.Util as Util
 import qualified System.Console.ANSI as Ansi
-import qualified System.IO.Extra as IO
+import qualified System.IO.Extra as IO.Extra
 import qualified System.Process as Process
 import qualified System.Time.Extra as System.Time
 
@@ -51,7 +53,7 @@ data Session = Session
   , command :: IORef (Maybe (String, [String])) -- ^ The last command passed to sessionStart, setup operations
   , warnings :: IORef [Load] -- ^ The warnings from the last load
   , curdir :: IORef FilePath -- ^ The current working directory
-  , running :: Concurrent.Var Bool -- ^ Am I actively running an async command
+  , running :: Concurrent.Extra.Var Bool -- ^ Am I actively running an async command
   , withThread :: Concurrent.ThreadId -- ^ Thread that called withSession
   , allowEval :: Bool  -- ^ Is the allow-eval flag set?
   }
@@ -71,13 +73,13 @@ withSession f = do
   command <- newIORef Nothing
   warnings <- newIORef []
   curdir <- newIORef "."
-  running <- Concurrent.newVar False
+  running <- Concurrent.Extra.newVar False
   debugShutdown "Starting session"
   withThread <- Concurrent.myThreadId
   let allowEval = False
   f Session{..} `Exception.finally` do
     debugShutdown "Start finally"
-    Concurrent.modifyVar_ running $ const $ pure False
+    Concurrent.Extra.modifyVar_ running $ const $ pure False
     whenJustM (readIORef ghci) \v -> do
       writeIORef ghci Nothing
       debugShutdown "Calling kill"
@@ -101,7 +103,7 @@ kill ghci = Util.ignored do
   Ansi.showCursor
 
 loadedModules :: [Load] -> [FilePath]
-loadedModules = List.nubOrd . map loadFile . filter (not . isLoadConfig)
+loadedModules = List.Extra.nubOrd . map loadFile . filter (not . isLoadConfig)
 
 qualify :: FilePath -> [Load] -> [Load]
 qualify dir xs = [x{loadFile = dir </> loadFile x} | x <- xs]
@@ -110,7 +112,7 @@ qualify dir xs = [x{loadFile = dir </> loadFile x} | x <- xs]
 --   the list of files that were observed (both those loaded and those that failed to load).
 sessionStart :: Session -> String -> [String] -> IO ([Load], [FilePath])
 sessionStart Session{ ghci = ghciIORef, ..} cmd setup = do
-  Concurrent.modifyVar_ running $ const $ pure False
+  Concurrent.Extra.modifyVar_ running $ const $ pure False
   writeIORef command $ Just (cmd, setup)
 
   -- cleanup any old instances
@@ -176,8 +178,8 @@ performEvals ghci True reloaded = do
 
 getCommands :: FilePath -> IO (FilePath, [(Int, String)])
 getCommands fp = do
-  ls <- IO.readFileUTF8' fp
-  pure (fp, splitCommands $ List.zipFrom 1 $ String.lines ls)
+  ls <- IO.Extra.readFileUTF8' fp
+  pure (fp, splitCommands $ zip [1 .. ] $ String.lines ls)
 
 splitCommands :: [(Int, String)] -> [(Int, String)]
 splitCommands [] = []
@@ -217,7 +219,7 @@ wrapGhciMultiline xs = [":{"] <> xs <> [":}"]
 sessionReload :: Session -> IO ([Load], [FilePath], [FilePath])
 sessionReload session@Session{ ghci = ghciIORef, ..} = do
   -- kill anything async, set stuck if you didn't succeed
-  old <- Concurrent.modifyVar running \b -> pure (False, b)
+  old <- Concurrent.Extra.modifyVar running \b -> pure (False, b)
   stuck <- if not old then pure False else do
     Just ghci <- readIORef ghciIORef
     fmap isNothing $ System.Time.timeout 5 $ interrupt ghci
@@ -240,7 +242,7 @@ sessionReload session@Session{ ghci = ghciIORef, ..} = do
     let messages = messages0 <> filter validWarn warn
 
     writeIORef warnings $ getWarnings messages
-    pure (messages <> evals, List.nubOrd (loaded <> reloaded), reloaded)
+    pure (messages <> evals, List.Extra.nubOrd (loaded <> reloaded), reloaded)
 
 
 -- | Run an exec operation asynchronously. Should not be a @:reload@ or similar.
@@ -250,14 +252,14 @@ sessionExecAsync :: Session -> String -> (String -> IO ()) -> IO ()
 sessionExecAsync Session{ ghci = ghciIORef, .. } cmd done = do
   Just ghci <- readIORef ghciIORef
   stderrIORef <- newIORef ""
-  Concurrent.modifyVar_ running $ const $ pure True
-  caller <- Concurrent.myThreadId
+  Concurrent.Extra.modifyVar_ running $ const $ pure True
+  caller <- Concurrent.Extra.myThreadId
   void $ flip Concurrent.forkFinally (either (Concurrent.throwTo caller) (const pass)) do
     execStream ghci cmd \strm msg ->
       when (msg /= "*** Exception: ExitSuccess") do
         when (strm == Stderr) $ writeIORef stderrIORef msg
         Util.outStrLn msg
-    old <- Concurrent.modifyVar running \b -> pure (False, b)
+    old <- Concurrent.Extra.modifyVar running \b -> pure (False, b)
     -- don't fire Done if someone interrupted us
     stderr <- readIORef stderrIORef
     when old $ done stderr

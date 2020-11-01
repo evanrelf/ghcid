@@ -16,7 +16,8 @@ import Ghcid.Types (Severity (..), Load (..))
 import Ghcid.Escape (Esc (..))
 
 import qualified Data.Char as Char
-import qualified Data.List.Extra as List
+import qualified Data.List as List
+import qualified Data.List.Extra as List.Extra
 import qualified Ghcid.Escape as Escape
 
 -- | Parse messages from show modules command. Given the parsed lines
@@ -24,20 +25,20 @@ import qualified Ghcid.Escape as Escape
 parseShowModules :: [String] -> [(String, FilePath)]
 parseShowModules (map Escape.unescape -> xs) =
     -- we only return raw values, don't want any escape codes in there
-    [ (takeWhile (not . Char.isSpace) $ List.trimStart a, takeWhile (/= ',') b)
+    [ (takeWhile (not . Char.isSpace) $ List.Extra.trimStart a, takeWhile (/= ',') b)
     | x <- xs, (a,'(':' ':b) <- [break (== '(') x]]
 
 -- | Parse messages from show paths command. Given the parsed lines
 --   return (current working directory, module import search paths)
 parseShowPaths :: [String] -> (FilePath, [FilePath])
 parseShowPaths (map Escape.unescape -> xs)
-    | (_:x:_:is) <- xs = (List.trimStart x, map List.trimStart is)
+    | (_:x:_:is) <- xs = (List.Extra.trimStart x, map List.Extra.trimStart is)
     | otherwise = (".",[])
 
 -- | Parse messages given on reload.
 parseLoad :: [String] -> [Load]
 -- nub, because cabal repl sometimes does two reloads at the start
-parseLoad (map Esc -> xs) = List.nubOrd $ f xs
+parseLoad (map Esc -> xs) = List.Extra.nubOrd $ f xs
     where
         f :: [Esc] -> [Load]
 
@@ -55,7 +56,7 @@ parseLoad (map Esc -> xs) = List.nubOrd $ f xs
             , Just ((pos1, pos2), rest) <- parsePosition rest
             , (msg,las) <- List.span isMessageBody xs
             , rest <- Escape.trimStartE $ Escape.unwordsE $ rest : xs
-            , sev <- if "warning:" `isPrefixOf` List.lower (Escape.unescapeE rest) then Warning else Error
+            , sev <- if "warning:" `isPrefixOf` fmap Char.toLower (Escape.unescapeE rest) then Warning else Error
             = Message sev file pos1 pos2 (map Escape.fromEsc $ x:msg) : f las
 
         -- <no location info>: can't find file: FILENAME
@@ -75,7 +76,7 @@ parseLoad (map Esc -> xs) = List.nubOrd $ f xs
             | Escape.unescapeE x == "Module imports form a cycle:"
             , (xs,rest) <- List.span leadingWhitespaceE xs
             , let ms = [takeWhile (/= ')') x | x <- xs, '(':x <- [dropWhile (/= '(') $ Escape.unescapeE x]]
-            = [Message Error m (0,0) (0,0) (map Escape.fromEsc $ x:xs) | m <- List.nubOrd ms] <> f rest
+            = [Message Error m (0,0) (0,0) (map Escape.fromEsc $ x:xs) | m <- List.Extra.nubOrd ms] <> f rest
 
         -- Loaded GHCi configuration from C:\Neil\ghcid\.ghci
         f (x:xs)

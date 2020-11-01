@@ -17,9 +17,9 @@ module Ghcid.Escape
 where
 
 import qualified Data.Char as Char
-import qualified Data.Either.Extra as Either
+import qualified Data.Either.Extra as Either.Extra
 import qualified Data.String as String
-import qualified Data.Tuple.Extra as Tuple
+import qualified Data.Tuple.Extra as Tuple.Extra
 
 -- A string with escape characters in it
 newtype Esc = Esc { fromEsc :: String }
@@ -61,7 +61,7 @@ stripInfixE needle e =
     Nothing ->
       Nothing
     Just (x,xs) ->
-      first (app $ Either.fromEither $ fmap (Esc . pure) x) <$> stripInfixE needle xs
+      first (app $ Either.Extra.fromEither $ fmap (Esc . pure) x) <$> stripInfixE needle xs
 
 breakE :: (Char -> Bool) -> Esc -> (Esc, Esc)
 breakE f = spanE (not . f)
@@ -105,7 +105,7 @@ reverseE :: Esc -> Esc
 reverseE = implode . reverse . explode
 
 breakEndE :: (Char -> Bool) -> Esc -> (Esc, Esc)
-breakEndE f = swap . Tuple.both reverseE . breakE f . reverseE
+breakEndE f = swap . Tuple.Extra.both reverseE . breakE f . reverseE
 
 
 lengthE :: Esc -> Int

@@ -23,10 +23,11 @@ import System.Console.CmdArgs (CmdArgs, Verbosity (..), (&=))
 import System.FilePath ((</>))
 
 import qualified Control.Exception as Exception
-import qualified Control.Monad.Extra as Monad
-import qualified Data.List.Extra as List
+import qualified Control.Monad.Extra as Monad.Extra
+import qualified Data.List as List
+import qualified Data.List.Extra as List.Extra
 import qualified Data.String as String
-import qualified Data.Tuple.Extra as Tuple
+import qualified Data.Tuple.Extra as Tuple.Extra
 import qualified Data.Version as Version
 import qualified Ghcid.Escape as Escape
 import qualified Ghcid.Util as Util
@@ -36,12 +37,13 @@ import qualified System.Console.CmdArgs as CmdArgs
 import qualified System.Console.CmdArgs.Explicit as CmdArgs.Explicit
 import qualified System.Console.CmdArgs.Verbosity as Verbosity
 import qualified System.Console.Terminal.Size as Term
-import qualified System.Directory.Extra as Directory
+import qualified System.Directory as Directory
 import qualified System.Environment as Environment
 import qualified System.Exit as Exit
 import qualified System.FilePath as FilePath
+import qualified System.IO as IO
 import qualified System.IO.Error as IO.Error
-import qualified System.IO.Extra as IO
+import qualified System.IO.Extra as IO.Extra
 import qualified System.Info
 import qualified System.Process as Process
 import qualified System.Time.Extra as System.Time
@@ -222,7 +224,7 @@ autoOptions o@Options{..}
               let yaml = dir </> "stack.yaml"
               b <- Directory.doesFileExist yaml &&^ Directory.doesDirectoryExist (dir </> ".stack-work")
               pure $ if b then Just yaml else Nothing
-      stackFile <- Monad.firstJustM findStack [".",".."] -- stack file might be parent, see #62
+      stackFile <- Monad.Extra.firstJustM findStack [".",".."] -- stack file might be parent, see #62
 
       let cabal = map (curdir </>) $ filter ((==) ".cabal" . FilePath.takeExtension) files
       let isLib = isPrefixOf "lib:"  -- `lib:foo` is the Cabal format
@@ -263,7 +265,7 @@ withGhcidArgs :: IO a -> IO a
 withGhcidArgs act = do
   b <- Directory.doesFileExist ".ghcid"
   if not b then act else do
-    extra <- concatMap CmdArgs.Explicit.splitArgs . String.lines <$> IO.readFile' ".ghcid"
+    extra <- concatMap CmdArgs.Explicit.splitArgs . String.lines <$> IO.Extra.readFile' ".ghcid"
     orig <- Environment.getArgs
     Environment.withArgs (extra <> orig) act
 
@@ -308,7 +310,7 @@ mainWithTerminal termSize termOutput = do
       origDir <- Directory.getCurrentDirectory
       Directory.withCurrentDirectory (directory opts) do
         opts <- autoOptions opts
-        opts <- pure $ opts{restart = List.nubOrd $ (origDir </> ".ghcid") : restart opts, reload = List.nubOrd $ reload opts}
+        opts <- pure $ opts{restart = List.Extra.nubOrd $ (origDir </> ".ghcid") : restart opts, reload = List.Extra.nubOrd $ reload opts}
 
         let noHeight = if no_height_limit opts then const Nothing else id
         termSize <- pure $ case (width opts, height opts) of
@@ -411,7 +413,7 @@ runGhcid session waiter termSize termOutput Options{..} = do
     putStrLn $ "\nNo files loaded, GHCi is not working properly.\nCommand: " <> command
     exitFailure
 
-  let restart = List.nubOrd $ restart <> [x | LoadConfig x <- messages]
+  let restart = List.Extra.nubOrd $ restart <> [x | LoadConfig x <- messages]
 
   project <- if project /= "" then pure project else FilePath.takeFileName <$> Directory.getCurrentDirectory
 
@@ -429,7 +431,7 @@ runGhcid session waiter termSize termOutput Options{..} = do
               Util.outStrLn $ "%LOADED: " <> show loaded
 
           let evals = [e | Eval e <- messages]
-          let (countErrors, countWarnings) = Tuple.both (sum :: [Int] -> Int) $ unzip
+          let (countErrors, countWarnings) = Tuple.Extra.both (sum :: [Int] -> Int) $ unzip
                   [if loadSeverity == Error then (1,0) else (0,1) | Message{..} <- messages, loadMessage /= []]
           let hasErrors = countErrors /= 0 || (countWarnings /= 0 && not warnings)
           let test1 =
@@ -447,9 +449,9 @@ runGhcid session waiter termSize termOutput Options{..} = do
           -- order and restrict the messages
           -- nubOrdOn loadMessage because module cycles generate the same message at several different locations
           ordMessages <- do
-              let (msgError, msgWarn) = List.partition ((==) Error . loadSeverity) $ List.nubOrdOn loadMessage $ filter isMessage messages
+              let (msgError, msgWarn) = List.partition ((==) Error . loadSeverity) $ List.Extra.nubOrdOn loadMessage $ filter isMessage messages
               -- sort error messages by modtime, so newer edits cause the errors to float to the top - see #153
-              errTimes <- sequence [traverseToSnd Util.getModTime x | x <- List.nubOrd $ map loadFile msgError]
+              errTimes <- sequence [traverseToSnd Util.getModTime x | x <- List.Extra.nubOrd $ map loadFile msgError]
               let f x = List.lookup (loadFile x) errTimes
                   moduleSorted = sortOn (Down . f) msgError <> msgWarn
               pure $ (if reverse_errors then reverse else id) moduleSorted
@@ -531,13 +533,13 @@ printEval (EvalResult file (line, col) msg result) =
 showJSON :: [(String, [String])] -> String
 showJSON xs = String.unlines $ concat $
   [ ((if i == 0 then "{" else ",") <> jString a <> ":") :
-    ["  " <> (if j == 0 then "[" else ",") <> b | (j,b) <- List.zipFrom (0 :: Int) bs] <>
+    ["  " <> (if j == 0 then "[" else ",") <> b | (j,b) <- zip [0 :: Int, 1 ..] bs] <>
     [if null bs then "  []" else "  ]"]
-  | (i,(a,bs)) <- List.zipFrom (0 :: Int) xs] <>
+  | (i,(a,bs)) <- zip [0 :: Int, 1 ..] xs] <>
   [["}"]]
 
 jString :: String -> String
-jString x = "\"" <> List.escapeJSON x <> "\""
+jString x = "\"" <> List.Extra.escapeJSON x <> "\""
 
 jMessage :: Load -> String
 jMessage Message{..} = jDict $
