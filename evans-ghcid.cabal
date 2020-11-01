@@ -55,41 +55,27 @@ common executable
     -with-rtsopts=-N
 
 
-library
-  import: common
-  hs-source-dirs: lib
+executable evans-ghcid
+  import: common, executable
+  hs-source-dirs: src
+  main-is: Main.hs
   build-depends:
     , ansi-terminal
     , cmdargs       >= 0.10
+    , containers
     , directory     >= 1.2
     , extra         >= 1.6.20
     , filepath
+    , fsnotify
     , process       >= 1.1
+    , terminal-size >= 0.3
     , time          >= 1.5
-  exposed-modules:
+    , unix
+  other-modules:
     , Ghcid
     , Ghcid.Escape
     , Ghcid.Parser
     , Ghcid.Types
     , Ghcid.Util
-
-
-executable evans-ghcid
-    import: common, executable
-    hs-source-dirs: exe
-    main-is: Main.hs
-    build-depends:
-      , ansi-terminal
-      , cmdargs       >= 0.10
-      , containers
-      , evans-ghcid
-      , extra         >= 1.6.20
-      , filepath
-      , fsnotify
-      , process       >= 1.1
-      , terminal-size >= 0.3
-      , time          >= 1.5
-      , unix
-    other-modules:
-      , Session
-      , Wait
+    , Session
+    , Wait

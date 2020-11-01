@@ -69,13 +69,16 @@ withCreateProc
      -> IO a
      )
   -> IO a
-withCreateProc procConfig f = do
-    let undo (_, _, _, procHandle) =
-          Util.ignored $ Process.terminateProcess procHandle
-    Exception.bracketOnError
-      (Process.createProcess procConfig)
-      undo
-      \(a, b, c, d) -> f a b c d
+withCreateProc processConfig f = do
+    let start = Process.createProcess processConfig
+
+    let stop (_, _, _, processHandle) =
+          Util.ignored $ Process.terminateProcess processHandle
+
+    let with (stdinHandle, stdoutHandle, stderrHandle, processHandle) =
+          f stdinHandle stdoutHandle stderrHandle processHandle
+
+    Exception.bracketOnError start stop with
 
 -- | Start GHCi by running the described process, returning  the result of the
 --   initial loading.
