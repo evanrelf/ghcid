@@ -23,7 +23,7 @@ import qualified Data.Tuple.Extra as Tuple.Extra
 
 -- A string with escape characters in it
 newtype Esc = Esc { fromEsc :: String }
-  deriving newtype (Eq, Show, Semigroup, Monoid)
+  deriving newtype (Eq, Semigroup)
 
 app :: Esc -> Esc -> Esc
 app = (<>)
@@ -68,10 +68,13 @@ breakE f = spanE (not . f)
 
 spanE :: (Char -> Bool) -> Esc -> (Esc, Esc)
 spanE f e = case unesc e of
-  Nothing -> (Esc "", Esc "")
-  Just (Left e', rest) -> first (app e') $ spanE f rest
-  Just (Right c, rest) | f c -> first (app $ Esc [c]) $ spanE f rest
-                         | otherwise -> (Esc "", e)
+  Nothing ->
+    (Esc "", Esc "")
+  Just (Left e', rest) ->
+    first (app e') $ spanE f rest
+  Just (Right c, rest)
+    | f c -> first (app $ Esc [c]) $ spanE f rest
+    | otherwise -> (Esc "", e)
 
 isPrefixOfE :: String -> Esc -> Bool
 isPrefixOfE x y = isJust $ stripPrefixE x y
@@ -81,8 +84,9 @@ trimStartE e =
   case unesc e of
     Nothing -> Esc ""
     Just (Left code, rest) -> app code $ trimStartE rest
-    Just (Right c, rest) | Char.isSpace c -> trimStartE rest
-                         | otherwise -> e
+    Just (Right c, rest)
+      | Char.isSpace c -> trimStartE rest
+      | otherwise -> e
 
 unwordsE :: [Esc] -> Esc
 unwordsE = Esc . String.unwords . map fromEsc
@@ -97,9 +101,12 @@ splitAtE :: Int -> Esc -> (Esc, Esc)
 splitAtE i e =
   case unesc e of
     _ | i <= 0 -> (Esc "", e)
-    Nothing -> (e, e)
-    Just (Left code, rest) -> first (app code) $ splitAtE i rest
-    Just (Right c, rest) -> first (app $ Esc [c]) $ splitAtE (i-1) rest
+    Nothing ->
+      (e, e)
+    Just (Left code, rest) ->
+      first (app code) $ splitAtE i rest
+    Just (Right c, rest) ->
+      first (app $ Esc [c]) $ splitAtE (i-1) rest
 
 reverseE :: Esc -> Esc
 reverseE = implode . reverse . explode

@@ -343,7 +343,6 @@ mainWithTerminal termSize termOutput = do
           runGhcid (if allow_eval opts then Session.enableEval session else session) waiter termSize (clear . termOutput . restyle) opts
 
 
-
 main :: IO ()
 main = mainWithTerminal termSize termOutput
   where

@@ -15,55 +15,51 @@ module Ghcid.Types
   )
 where
 
-import Data.Data (Data)
-
 -- | GHCi shut down
 data GhciError = UnexpectedExit
-    { ghciErrorCmd :: String
-    , ghciErrorMsg :: String
-    , ghciErrorLastStdErr :: Maybe String
-    } deriving stock (Show, Eq, Ord, Typeable, Data)
-
--- | Make GhciError an exception
-instance Exception GhciError
+  { ghciErrorCmd :: String
+  , ghciErrorMsg :: String
+  , ghciErrorLastStdErr :: Maybe String
+  } deriving stock Show
+    deriving anyclass Exception
 
 -- | The stream Ghci is talking over.
 data Stream = Stdout | Stderr
-    deriving stock (Show, Eq, Ord, Bounded, Enum, Read, Typeable, Data)
+  deriving stock (Show, Eq)
 
 -- | Severity of messages
 data Severity = Warning | Error
-    deriving stock (Show, Eq, Ord, Bounded, Enum, Read, Typeable, Data)
+  deriving stock (Show, Eq, Ord)
 
 -- | Load messages
 data Load
-    = -- | A module/file was being loaded.
-      Loading
-        { loadModule :: String -- ^ The module that was being loaded, @Foo.Bar@.
-        , loadFile :: FilePath -- ^ The file that was being loaded, @Foo/Bar.hs@.
-        }
-    | -- | An error/warning was emitted.
-      Message
-        { loadSeverity :: Severity -- ^ The severity of the message, either 'Warning' or 'Error'.
-        , loadFile :: FilePath -- ^ The file the error relates to, @Foo/Bar.hs@.
-        , loadFilePos :: (Int,Int) -- ^ The position in the file, @(line,col)@, both 1-based. Uses @(0,0)@ for no position information.
-        , loadFilePosEnd :: (Int, Int) -- ^ The end position in the file, @(line,col)@, both 1-based. If not present will be the same as 'loadFilePos'.
-        , loadMessage :: [String] -- ^ The message, split into separate lines, may contain ANSI Escape codes.
-        }
-    | -- | A config file was loaded, usually a .ghci file (GHC 8.2 and above only)
-      LoadConfig
-        { loadFile :: FilePath -- ^ The file that was being loaded, @.ghci@.
-        }
-    | -- | A response to an eval comment
-      Eval EvalResult
-    deriving stock (Show, Eq, Ord)
+  = -- | A module/file was being loaded.
+    Loading
+      { loadModule :: String -- ^ The module that was being loaded, @Foo.Bar@.
+      , loadFile :: FilePath -- ^ The file that was being loaded, @Foo/Bar.hs@.
+      }
+  | -- | An error/warning was emitted.
+    Message
+      { loadSeverity :: Severity -- ^ The severity of the message, either 'Warning' or 'Error'.
+      , loadFile :: FilePath -- ^ The file the error relates to, @Foo/Bar.hs@.
+      , loadFilePos :: (Int,Int) -- ^ The position in the file, @(line,col)@, both 1-based. Uses @(0,0)@ for no position information.
+      , loadFilePosEnd :: (Int, Int) -- ^ The end position in the file, @(line,col)@, both 1-based. If not present will be the same as 'loadFilePos'.
+      , loadMessage :: [String] -- ^ The message, split into separate lines, may contain ANSI Escape codes.
+      }
+  | -- | A config file was loaded, usually a .ghci file (GHC 8.2 and above only)
+    LoadConfig
+      { loadFile :: FilePath -- ^ The file that was being loaded, @.ghci@.
+      }
+  | -- | A response to an eval comment
+    Eval EvalResult
+  deriving stock (Show, Eq, Ord)
 
 data EvalResult = EvalResult
-    { evalFile :: FilePath -- ^ The file that was being loaded, @.ghci@.
-    , evalFilePos :: (Int, Int)
-    , evalCommand :: String
-    , evalResult :: String
-    } deriving stock (Show, Eq, Ord)
+  { evalFile :: FilePath -- ^ The file that was being loaded, @.ghci@.
+  , evalFilePos :: (Int, Int)
+  , evalCommand :: String
+  , evalResult :: String
+  } deriving stock (Show, Eq, Ord)
 
 -- | Is a 'Load' a 'Message'?
 isMessage :: Load -> Bool

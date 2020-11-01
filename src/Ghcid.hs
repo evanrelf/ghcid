@@ -3,13 +3,7 @@
 -- | Library for spawning and working with Ghci sessions.
 module Ghcid
   ( Ghci
-  , GhciError (..)
-  , Stream (..)
-  , Load (..)
-  , Severity (..)
   , startGhci
-  , startGhciProcess
-  , stopGhci
   , interrupt
   , process
   , execStream
@@ -25,13 +19,11 @@ import Data.Unique (Unique)
 import Ghcid.Types
   ( GhciError (..)
   , Load (..)
-  , Severity (..)
   , Stream (..)
   , isLoading
   )
 import Relude.Extra.Enum (next)
 
-import qualified Control.Concurrent as Concurrent
 import qualified Control.Concurrent.Extra as Concurrent.Extra
 import qualified Control.Exception as Exception
 import qualified Control.Exception.Extra as Exception.Extra
@@ -47,7 +39,6 @@ import qualified System.Console.CmdArgs.Verbosity as Verbosity
 import qualified System.IO as IO
 import qualified System.IO.Error as IO.Error
 import qualified System.Process as Process
-import qualified System.Time.Extra as System.Time
 
 -- | A GHCi session. Created with 'startGhci', closed with 'stopGhci'.
 --
@@ -74,15 +65,15 @@ withCreateProc
      )
   -> IO a
 withCreateProc processConfig f = do
-    let start = Process.createProcess processConfig
+  let start = Process.createProcess processConfig
 
-    let stop (_, _, _, processHandle) =
-          Util.ignored $ Process.terminateProcess processHandle
+  let stop (_, _, _, processHandle) =
+        Util.ignored $ Process.terminateProcess processHandle
 
-    let with (stdinHandle, stdoutHandle, stderrHandle, processHandle) =
-          f stdinHandle stdoutHandle stderrHandle processHandle
+  let with (stdinHandle, stdoutHandle, stderrHandle, processHandle) =
+        f stdinHandle stdoutHandle stderrHandle processHandle
 
-    Exception.bracketOnError start stop with
+  Exception.bracketOnError start stop with
 
 -- | Start GHCi by running the described process, returning  the result of the
 --   initial loading.
@@ -297,12 +288,12 @@ process = ghciProcess
 --   be called single threaded.
 execBuffer :: Ghci -> String -> (Stream -> String -> IO ()) -> IO [String]
 execBuffer ghci cmd echo = do
-    stdout <- newIORef []
-    stderr <- newIORef []
-    execStream ghci cmd \strm s -> do
-        modifyIORef (if strm == Stdout then stdout else stderr) (s:)
-        echo strm s
-    reverse <$> ((<>) <$> readIORef stderr <*> readIORef stdout)
+  stdout <- newIORef []
+  stderr <- newIORef []
+  execStream ghci cmd \strm s -> do
+    modifyIORef (if strm == Stdout then stdout else stderr) (s:)
+    echo strm s
+  reverse <$> ((<>) <$> readIORef stderr <*> readIORef stdout)
 
 -- | Send a command, get lines of result. Must be called single-threaded.
 exec :: Ghci -> String -> IO [String]
@@ -323,20 +314,9 @@ reload ghci = Parser.parseLoad <$> exec ghci ":reload"
 -- | Send @:quit@ and wait for the process to quit.
 quit :: Ghci -> IO ()
 quit ghci =  do
-    interrupt ghci
-    Exception.handle (\UnexpectedExit{} -> pass) $ void $ exec ghci ":quit"
-    -- Be aware that waitForProcess has a race condition, see
-    -- https://github.com/haskell/process/issues/46. Therefore just ignore the
-    -- exception anyway, its probably already terminated.
-    Util.ignored $ void $ Process.waitForProcess $ process ghci
-
-
--- | Stop GHCi. Attempts to interrupt and execute @:quit:@, but if that doesn't
---   complete within 5 seconds it just terminates the process.
-stopGhci :: Ghci -> IO ()
-stopGhci ghci = do
-    void $ Concurrent.forkIO do
-        -- if nicely doesn't work, kill ghci as the process level
-        System.Time.sleep 5
-        Process.terminateProcess $ process ghci
-    quit ghci
+  interrupt ghci
+  Exception.handle (\UnexpectedExit{} -> pass) $ void $ exec ghci ":quit"
+  -- Be aware that waitForProcess has a race condition, see
+  -- https://github.com/haskell/process/issues/46. Therefore just ignore the
+  -- exception anyway, its probably already terminated.
+  Util.ignored $ void $ Process.waitForProcess $ process ghci
